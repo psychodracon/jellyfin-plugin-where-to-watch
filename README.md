@@ -5,13 +5,15 @@ A Jellyfin 12 plugin that finds which streaming services carry your Movies and S
 ## What it does
 
 - **Tags** items with `stream:<provider>` (for example `stream:Netflix`) on Movies, Series and their Episodes (episodes carry their series' tags). Only `stream:*` tags are ever added or removed.
-- **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, corner radius and JPEG quality are configurable.
-- Uses **flatrate** (subscription) availability only, with an **ordered country fallback** (for example `PL`, then `GB`): the first country where a selected provider has the title is used.
+- **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, backdrop and logo corner radius, space around the logo, output format and quality are configurable. The defaults give a rounded dark tile around each logo, bottom-left.
+- Uses **flatrate** (subscription) availability only, with an **ordered country fallback** (for example `PL`, then `US`): the first country where a selected provider has the title is used.
 - **State and resume:** per-item results are stored in `<plugin data>/state.json`, written atomically and checkpointed during a run. An interrupted run resumes where it stopped. Items are re-checked after a configurable number of days; failed lookups are retried on the next run; changing the countries or selected providers triggers a full re-check.
 
 ## How badges are drawn
 
 A small middleware intercepts `Items/{id}/Images/Primary` requests for items that have providers in the state, draws the badges on the poster Jellyfin would have served, and caches the result under Jellyfin's cache folder. Disabling the plugin or the badges brings the original posters straight back.
+
+**Poster format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP), so every client keeps getting a format it already accepts. JPEG is encoded without chroma subsampling (4:4:4) at quality 95 by default. Because the poster is decoded and encoded again, JPEG is never perfectly lossless; for the least loss pick `Png` (lossless but large) or `Webp` with quality 100 (lossless), provided your clients accept WebP.
 
 Logo lookup order per provider id:
 

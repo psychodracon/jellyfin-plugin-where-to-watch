@@ -100,7 +100,7 @@ public sealed partial class BadgeMiddleware
             && !context.Response.Headers.ContainsKey(HeaderNames.ContentEncoding)
             && buffer.Length is > 0 and <= MaxImageBytes;
 
-        byte[]? rendered = null;
+        RenderedImage? rendered = null;
         if (renderable)
         {
             rendered = await RenderAsync(buffer.ToArray(), plan, context.RequestAborted).ConfigureAwait(false);
@@ -128,21 +128,23 @@ public sealed partial class BadgeMiddleware
     private static void SetHeaders(HttpContext context, string etag)
     {
         context.Response.Headers.ETag = etag;
+        // The format follows what Jellyfin served for this Accept header, so caches must keep the variants apart.
+        context.Response.Headers.Vary = HeaderNames.Accept;
         // The URL's image tag does not change when badges do, so clients must revalidate (cheap 304s).
         context.Response.Headers.CacheControl = "no-cache";
         context.Response.Headers.Remove(HeaderNames.LastModified);
     }
 
-    private static async Task WriteAsync(HttpContext context, byte[] bytes, string etag)
+    private static async Task WriteAsync(HttpContext context, RenderedImage image, string etag)
     {
         context.Response.StatusCode = StatusCodes.Status200OK;
-        context.Response.ContentType = "image/jpeg";
-        context.Response.ContentLength = bytes.Length;
+        context.Response.ContentType = image.ContentType;
+        context.Response.ContentLength = image.Bytes.Length;
         SetHeaders(context, etag);
-        await context.Response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
+        await context.Response.Body.WriteAsync(image.Bytes, context.RequestAborted).ConfigureAwait(false);
     }
 
-    private async Task<byte[]?> RenderAsync(byte[] poster, RenderPlan plan, CancellationToken cancellationToken)
+    private async Task<RenderedImage?> RenderAsync(byte[] poster, RenderPlan plan, CancellationToken cancellationToken)
     {
         try
         {
@@ -197,6 +199,7 @@ public sealed partial class BadgeMiddleware
         var key = RenderCache.Key(
             itemId.ToString("N"),
             context.Request.QueryString.Value ?? string.Empty,
+            context.Request.Headers.Accept.ToString(),
             item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture),
             config.RenderFingerprint(),
             string.Join(',', providerIds.Select(id => id.ToString(CultureInfo.InvariantCulture) + ":" + _logos.Stamp(id))));

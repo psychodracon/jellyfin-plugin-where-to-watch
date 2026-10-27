@@ -9,6 +9,13 @@ namespace Jellyfin.Plugin.WhereToWatch.Rendering;
 /// </summary>
 public sealed class RenderCache
 {
+    private static readonly (string Extension, string ContentType)[] Types =
+    [
+        (".jpg", "image/jpeg"),
+        (".png", "image/png"),
+        (".webp", "image/webp"),
+    ];
+
     private readonly string _root;
 
     /// <summary>
@@ -34,24 +41,33 @@ public sealed class RenderCache
     /// Reads a cached render.
     /// </summary>
     /// <param name="key">Cache key.</param>
-    /// <returns>The JPEG bytes, or null on a miss.</returns>
-    public byte[]? Get(string key)
+    /// <returns>The image, or null on a miss.</returns>
+    public RenderedImage? Get(string key)
     {
-        var path = PathFor(key);
-        return File.Exists(path) ? File.ReadAllBytes(path) : null;
+        foreach (var (extension, contentType) in Types)
+        {
+            var path = PathFor(key, extension);
+            if (File.Exists(path))
+            {
+                return new RenderedImage(File.ReadAllBytes(path), contentType);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
     /// Stores a render.
     /// </summary>
     /// <param name="key">Cache key.</param>
-    /// <param name="bytes">JPEG bytes.</param>
-    public void Set(string key, byte[] bytes)
+    /// <param name="image">The rendered image.</param>
+    public void Set(string key, RenderedImage image)
     {
         Directory.CreateDirectory(_root);
-        var path = PathFor(key);
+        var extension = Types.First(t => t.ContentType == image.ContentType).Extension;
+        var path = PathFor(key, extension);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllBytes(temp, bytes);
+        File.WriteAllBytes(temp, image.Bytes);
         File.Move(temp, path, overwrite: true);
     }
 
@@ -66,7 +82,7 @@ public sealed class RenderCache
             return;
         }
 
-        var files = new DirectoryInfo(_root).GetFiles("*.jpg").OrderBy(f => f.LastWriteTimeUtc).ToList();
+        var files = new DirectoryInfo(_root).GetFiles().Where(f => Types.Any(t => t.Extension == f.Extension)).OrderBy(f => f.LastWriteTimeUtc).ToList();
         var total = files.Sum(f => f.Length);
         foreach (var file in files)
         {
@@ -91,5 +107,5 @@ public sealed class RenderCache
         }
     }
 
-    private string PathFor(string key) => Path.Combine(_root, key + ".jpg");
+    private string PathFor(string key, string extension) => Path.Combine(_root, key + extension);
 }

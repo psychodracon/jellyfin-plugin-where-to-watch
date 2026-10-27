@@ -17,7 +17,7 @@ public class CountryResolverTests
             ["PL"] = [Hbo, Apple, Netflix, Disney],
         };
 
-        var result = CountryResolver.Resolve(["PL", "GB"], [8, 1899], available);
+        var result = CountryResolver.Resolve(["PL", "US"], [8, 1899], available);
 
         Assert.Equal("PL", result.Country);
         Assert.Equal([Netflix, Hbo], result.Providers);
@@ -29,12 +29,12 @@ public class CountryResolverTests
         var available = new Dictionary<string, IReadOnlyList<ProviderRef>>
         {
             ["PL"] = [Apple],
-            ["GB"] = [Disney, Netflix],
+            ["US"] = [Disney, Netflix],
         };
 
-        var result = CountryResolver.Resolve(["PL", "GB"], [8, 337], available);
+        var result = CountryResolver.Resolve(["PL", "US"], [8, 337], available);
 
-        Assert.Equal("GB", result.Country);
+        Assert.Equal("US", result.Country);
         Assert.Equal([Netflix, Disney], result.Providers);
     }
 
@@ -43,12 +43,12 @@ public class CountryResolverTests
     {
         var available = new Dictionary<string, IReadOnlyList<ProviderRef>>
         {
-            ["GB"] = [Netflix],
+            ["US"] = [Netflix],
         };
 
-        var result = CountryResolver.Resolve(["PL", "GB"], [8], available);
+        var result = CountryResolver.Resolve(["PL", "US"], [8], available);
 
-        Assert.Equal("GB", result.Country);
+        Assert.Equal("US", result.Country);
     }
 
     [Fact]
@@ -70,10 +70,10 @@ public class CountryResolverTests
         var available = new Dictionary<string, IReadOnlyList<ProviderRef>>
         {
             ["PL"] = [Apple],
-            ["GB"] = [Apple],
+            ["US"] = [Apple],
         };
 
-        var result = CountryResolver.Resolve(["PL", "GB"], [8], available);
+        var result = CountryResolver.Resolve(["PL", "US"], [8], available);
 
         Assert.Null(result.Country);
         Assert.Empty(result.Providers);

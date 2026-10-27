@@ -21,7 +21,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the ISO country codes to look providers up in, primary first.
     /// </summary>
-    public string[] Countries { get; set; } = ["PL", "GB"];
+    public string[] Countries { get; set; } = ["PL", "US"];
 
     /// <summary>
     /// Gets or sets the selected TMDB provider ids, in badge priority order.
@@ -56,12 +56,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the badge width as a percentage of the poster width.
     /// </summary>
-    public double WidthPercent { get; set; } = 32;
+    public double WidthPercent { get; set; } = 30;
 
     /// <summary>
     /// Gets or sets the badge width divided by its height.
     /// </summary>
-    public double AspectRatio { get; set; } = 2.4;
+    public double AspectRatio { get; set; } = 1.1;
 
     /// <summary>
     /// Gets or sets the margin as a percentage of the poster width.
@@ -71,7 +71,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the gap between badges as a percentage of the poster width.
     /// </summary>
-    public double SpacingPercent { get; set; } = 1;
+    public double SpacingPercent { get; set; } = 3;
 
     /// <summary>
     /// Gets or sets the backdrop colour as #AARRGGBB.
@@ -81,7 +81,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the backdrop corner radius as a percentage of the badge height.
     /// </summary>
-    public double CornerRadiusPercent { get; set; } = 25;
+    public double CornerRadiusPercent { get; set; } = 10;
 
     /// <summary>
     /// Gets or sets the space between the backdrop edge and the logo, as a percentage of the badge height.
@@ -89,9 +89,19 @@ public class PluginConfiguration : BasePluginConfiguration
     public double PaddingPercent { get; set; } = 4;
 
     /// <summary>
-    /// Gets or sets the JPEG quality of rendered posters.
+    /// Gets or sets the logo corner radius as a percentage of the logo's shorter side; 50 makes a circle.
     /// </summary>
-    public int JpegQuality { get; set; } = 90;
+    public double LogoCornerRadiusPercent { get; set; } = 8;
+
+    /// <summary>
+    /// Gets or sets the format of rendered posters. Auto keeps the format Jellyfin served.
+    /// </summary>
+    public OutputFormat Format { get; set; } = OutputFormat.Auto;
+
+    /// <summary>
+    /// Gets or sets the quality of JPEG and lossy WebP output; 100 makes WebP lossless.
+    /// </summary>
+    public int JpegQuality { get; set; } = 95;
 
     /// <summary>
     /// Gets the primary country, the first in <see cref="Countries"/>.
@@ -108,7 +118,9 @@ public class PluginConfiguration : BasePluginConfiguration
         BackdropColor,
         CornerRadiusPercent,
         Math.Clamp(JpegQuality, 1, 100),
-        PaddingPercent);
+        PaddingPercent,
+        LogoCornerRadiusPercent,
+        Format);
 
     /// <summary>
     /// Picks the providers whose badges are drawn for an item.
