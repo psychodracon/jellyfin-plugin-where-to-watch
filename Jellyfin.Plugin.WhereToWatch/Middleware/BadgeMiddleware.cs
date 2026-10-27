@@ -18,7 +18,10 @@ namespace Jellyfin.Plugin.WhereToWatch.Middleware;
 public sealed partial class BadgeMiddleware
 {
     private const long MaxImageBytes = 25 * 1024 * 1024;
-    private const double DefaultCardAspect = 2.0 / 3;
+    // Poster cards are a fixed 2:3 box. The web client scales the poster to cover that box and centres it, so a poster of any
+    // other shape is cropped at the sides (or top and bottom). The fillWidth/fillHeight in the request is the poster's own shape,
+    // not the card's, so it cannot be used for this.
+    private const double CardAspect = 2.0 / 3;
     private static readonly SemaphoreSlim RenderSlots = new(Math.Max(1, Environment.ProcessorCount));
 
     // Logged once per provider so a missing logo does not flood the log with one line per poster request.
@@ -75,7 +78,7 @@ public sealed partial class BadgeMiddleware
                 return;
             }
 
-            await WriteAsync(context, cached, etag, plan).ConfigureAwait(false);
+            await WriteAsync(context, cached, etag).ConfigureAwait(false);
             return;
         }
 
@@ -123,7 +126,7 @@ public sealed partial class BadgeMiddleware
         }
 
         _cache.Set(plan.Key, rendered);
-        await WriteAsync(context, rendered, etag, plan).ConfigureAwait(false);
+        await WriteAsync(context, rendered, etag).ConfigureAwait(false);
     }
 
     [GeneratedRegex(@"/Items/(?<id>[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})/Images/Primary(?:/0)?(?:/|$)", RegexOptions.IgnoreCase)]
@@ -139,7 +142,7 @@ public sealed partial class BadgeMiddleware
         context.Response.Headers.Remove(HeaderNames.LastModified);
     }
 
-    private static async Task WriteAsync(HttpContext context, RenderedImage image, string etag, RenderPlan plan)
+    private static async Task WriteAsync(HttpContext context, RenderedImage image, string etag)
     {
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = image.ContentType;
@@ -147,7 +150,7 @@ public sealed partial class BadgeMiddleware
         SetHeaders(context, etag);
 
         // Lets you check in the browser's network tab which build rendered the poster and which card shape it assumed.
-        context.Response.Headers["X-WhereToWatch"] = FormattableString.Invariant($"{typeof(BadgeMiddleware).Assembly.GetName().Version}; card-aspect={plan.VisibleAspect:F3}");
+        context.Response.Headers["X-WhereToWatch"] = FormattableString.Invariant($"{typeof(BadgeMiddleware).Assembly.GetName().Version}; card-aspect={CardAspect:F3}");
         await context.Response.Body.WriteAsync(image.Bytes, context.RequestAborted).ConfigureAwait(false);
     }
 
@@ -176,7 +179,7 @@ public sealed partial class BadgeMiddleware
                     }
                 }
 
-                return logos.Count == 0 ? null : BadgeRenderer.Render(poster, logos, plan.Settings, plan.VisibleAspect);
+                return logos.Count == 0 ? null : BadgeRenderer.Render(poster, logos, plan.Settings, CardAspect);
             }
             finally
             {
@@ -220,29 +223,16 @@ public sealed partial class BadgeMiddleware
             return null;
         }
 
-        var visibleAspect = VisibleAspect(context.Request.Query);
         var key = RenderCache.Key(
             itemId.ToString("N"),
             context.Request.QueryString.Value ?? string.Empty,
             context.Request.Headers.Accept.ToString(),
-            visibleAspect.ToString("F4", CultureInfo.InvariantCulture),
+            CardAspect.ToString("F4", CultureInfo.InvariantCulture),
             item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture),
             config.RenderFingerprint(),
             string.Join(',', providerIds.Select(id => id.ToString(CultureInfo.InvariantCulture) + ":" + _logos.Stamp(id))));
-        return new RenderPlan(key, providerIds, config.ToRenderSettings(), visibleAspect);
+        return new RenderPlan(key, providerIds, config.ToRenderSettings());
     }
 
-    // Jellyfin's grid asks for fillWidth x fillHeight, the shape of the card; the web client then crops the poster to it.
-    // Other requests (such as the details page) show a standard 2:3 poster.
-    private static double VisibleAspect(IQueryCollection query)
-    {
-        if (int.TryParse(query["fillWidth"], out var width) && int.TryParse(query["fillHeight"], out var height) && width > 0 && height > 0)
-        {
-            return (double)width / height;
-        }
-
-        return DefaultCardAspect;
-    }
-
-    private sealed record RenderPlan(string Key, IReadOnlyList<int> ProviderIds, RenderSettings Settings, double VisibleAspect);
+    private sealed record RenderPlan(string Key, IReadOnlyList<int> ProviderIds, RenderSettings Settings);
 }
