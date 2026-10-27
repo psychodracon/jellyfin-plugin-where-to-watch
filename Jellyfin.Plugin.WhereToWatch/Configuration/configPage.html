@@ -5,13 +5,165 @@
   <title>Where to Watch</title>
 </head>
 <body>
-  <div id="WhereToWatchConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+  <div id="WhereToWatchConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
     <div data-role="content">
       <div class="content-primary">
         <h2>Where to Watch</h2>
-        <p>Configuration is coming soon.</p>
+        <form id="WhereToWatchForm">
+          <div class="inputContainer">
+            <input is="emby-input" type="password" id="TmdbApiKey" label="TMDB API key or read access token" />
+            <div class="fieldDescription">Save the key, then load the provider list below.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="text" id="Countries" label="Countries (ISO codes, primary first)" />
+            <div class="fieldDescription">Example: PL,GB. The first country where a selected provider has the title is used.</div>
+          </div>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" id="TtlDays" label="Days before an item is checked again" min="1" />
+          </div>
+          <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="TagsEnabled" /><span>Add stream: tags</span></label>
+          <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="BadgesEnabled" /><span>Draw badges on posters</span></label>
+
+          <h3>Providers</h3>
+          <div class="fieldDescription">Checked providers get tags and badges. The order of the checked ones is the badge priority.</div>
+          <button is="emby-button" type="button" id="LoadProviders" class="raised"><span>Load providers from TMDB</span></button>
+          <div id="ProviderList" style="margin: 1em 0;"></div>
+
+          <h3>Badge look</h3>
+          <div class="inputContainer">
+            <input is="emby-input" type="number" id="MaxBadges" label="Maximum badges per poster" min="0" />
+          </div>
+          <div class="selectContainer">
+            <select is="emby-select" id="Corner" label="Corner">
+              <option value="BottomLeft">Bottom left</option>
+              <option value="BottomRight">Bottom right</option>
+              <option value="TopLeft">Top left</option>
+              <option value="TopRight">Top right</option>
+            </select>
+          </div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="0.1" id="WidthPercent" label="Badge width (% of poster width)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="0.1" id="AspectRatio" label="Badge width / height" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="0.1" id="MarginPercent" label="Margin (% of poster width)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="0.1" id="SpacingPercent" label="Gap between badges (% of poster width)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="text" id="BackdropColor" label="Backdrop colour (#AARRGGBB)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="1" id="CornerRadiusPercent" label="Corner radius (% of badge height)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" min="1" max="100" id="JpegQuality" label="JPEG quality" /></div>
+
+          <div class="fieldDescription">
+            Custom logos: put <code>&lt;providerId&gt;.png</code> (or .webp/.jpg) in the plugin's <code>logos</code> data folder. They win over the TMDB icon.
+            After changing providers or logos, run "Where to Watch: hard refresh" from Scheduled Tasks.
+          </div>
+
+          <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+        </form>
       </div>
     </div>
+
+    <script type="text/javascript">
+      (function () {
+        var pluginId = '3b675640-68ab-443a-adf8-55560d06ea1b';
+        var page = document.querySelector('#WhereToWatchConfigPage');
+        var textFields = ['TmdbApiKey', 'BackdropColor'];
+        var numberFields = ['TtlDays', 'MaxBadges', 'WidthPercent', 'AspectRatio', 'MarginPercent', 'SpacingPercent', 'CornerRadiusPercent', 'JpegQuality'];
+        var checkFields = ['TagsEnabled', 'BadgesEnabled'];
+        var selectedIds = [];
+        var providers = [];
+
+        function field(id) { return page.querySelector('#' + id); }
+
+        function renderProviders() {
+          var list = field('ProviderList');
+          list.textContent = '';
+          var byId = {};
+          providers.forEach(function (p) { byId[p.id] = p; });
+
+          function row(p, checked, index) {
+            var div = document.createElement('div');
+            div.style.cssText = 'display:flex;align-items:center;gap:.5em;margin:.25em 0;';
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = checked;
+            box.addEventListener('change', function () {
+              selectedIds = selectedIds.filter(function (id) { return id !== p.id; });
+              if (box.checked) { selectedIds.push(p.id); }
+              renderProviders();
+            });
+            div.appendChild(box);
+            var label = document.createElement('span');
+            label.textContent = p.name + ' (' + p.id + ')';
+            label.style.flex = '1';
+            div.appendChild(label);
+            if (checked) {
+              [['↑', -1], ['↓', 1]].forEach(function (b) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = b[0];
+                btn.addEventListener('click', function () {
+                  var target = index + b[1];
+                  if (target < 0 || target >= selectedIds.length) { return; }
+                  var tmp = selectedIds[index];
+                  selectedIds[index] = selectedIds[target];
+                  selectedIds[target] = tmp;
+                  renderProviders();
+                });
+                div.appendChild(btn);
+              });
+            }
+            return div;
+          }
+
+          selectedIds.forEach(function (id, i) {
+            list.appendChild(row(byId[id] || { id: id, name: 'Provider' }, true, i));
+          });
+          providers.filter(function (p) { return selectedIds.indexOf(p.id) < 0; }).forEach(function (p) {
+            list.appendChild(row(p, false, -1));
+          });
+        }
+
+        function loadProviders() {
+          Dashboard.showLoadingMsg();
+          return ApiClient.getJSON(ApiClient.getUrl('WhereToWatch/tmdb/providers')).then(function (result) {
+            providers = result.map(function (p) { return { id: p.id !== undefined ? p.id : p.Id, name: p.name !== undefined ? p.name : p.Name }; });
+            renderProviders();
+            Dashboard.hideLoadingMsg();
+          }, function () {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('Could not load providers. Save a valid TMDB key first.');
+          });
+        }
+
+        page.addEventListener('pageshow', function () {
+          Dashboard.showLoadingMsg();
+          ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+            textFields.concat(numberFields).forEach(function (id) { field(id).value = config[id]; });
+            checkFields.forEach(function (id) { field(id).checked = !!config[id]; });
+            field('Countries').value = (config.Countries || []).join(',');
+            field('Corner').value = config.Corner;
+            selectedIds = (config.SelectedProviderIds || []).slice();
+            renderProviders();
+            Dashboard.hideLoadingMsg();
+            if (config.TmdbApiKey) { loadProviders(); }
+          });
+        });
+
+        field('LoadProviders').addEventListener('click', loadProviders);
+
+        field('WhereToWatchForm').addEventListener('submit', function (e) {
+          e.preventDefault();
+          Dashboard.showLoadingMsg();
+          ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+            textFields.forEach(function (id) { config[id] = field(id).value; });
+            numberFields.forEach(function (id) { config[id] = Number(field(id).value); });
+            checkFields.forEach(function (id) { config[id] = field(id).checked; });
+            config.Countries = field('Countries').value.split(',').map(function (c) { return c.trim().toUpperCase(); }).filter(Boolean);
+            config.Corner = field('Corner').value;
+            config.SelectedProviderIds = selectedIds.slice();
+            ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
+          });
+          return false;
+        });
+      })();
+    </script>
   </div>
 </body>
 </html>
