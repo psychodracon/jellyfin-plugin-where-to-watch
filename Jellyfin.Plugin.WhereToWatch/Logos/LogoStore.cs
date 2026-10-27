@@ -56,10 +56,9 @@ public sealed class LogoStore
     public async Task EnsureCachedAsync(IEnumerable<TmdbProvider> providers, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(CacheRoot);
-        DeleteLowResolutionLeftovers();
         foreach (var provider in providers)
         {
-            if (provider.LogoPath is null || Resolve(provider.Id) is not null)
+            if (provider.LogoPath is null || FindCustom(provider.Id) is not null || File.Exists(CachedPath(provider.Id)))
             {
                 continue;
             }
@@ -68,34 +67,27 @@ public sealed class LogoStore
             if (bytes is not null)
             {
                 await File.WriteAllBytesAsync(CachedPath(provider.Id), bytes, cancellationToken).ConfigureAwait(false);
+
+                // Only now is it safe to drop the 154px icon an earlier version cached.
+                File.Delete(LegacyCachedPath(provider.Id));
             }
         }
     }
 
     private static string CachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".original.img");
 
-    // Earlier versions cached 154px icons as "<id>.img"; drop them so the full-size icons get downloaded.
-    private static void DeleteLowResolutionLeftovers()
+    // Earlier versions cached 154px icons as "<id>.img". They stay in use until the full-size icon has been downloaded.
+    private static string LegacyCachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".img");
+
+    private static string? FindCustom(int providerId)
     {
-        foreach (var file in Directory.EnumerateFiles(CacheRoot, "*.img").Where(f => !f.EndsWith(".original.img", StringComparison.Ordinal)))
-        {
-            File.Delete(file);
-        }
+        var name = providerId.ToString(CultureInfo.InvariantCulture);
+        return CustomExtensions.Select(extension => Path.Combine(Root, name + extension)).FirstOrDefault(File.Exists);
     }
 
     private static string? Resolve(int providerId)
     {
-        var name = providerId.ToString(CultureInfo.InvariantCulture);
-        foreach (var extension in CustomExtensions)
-        {
-            var custom = Path.Combine(Root, name + extension);
-            if (File.Exists(custom))
-            {
-                return custom;
-            }
-        }
-
-        var cached = CachedPath(providerId);
-        return File.Exists(cached) ? cached : null;
+        return FindCustom(providerId)
+            ?? new[] { CachedPath(providerId), LegacyCachedPath(providerId) }.FirstOrDefault(File.Exists);
     }
 }
