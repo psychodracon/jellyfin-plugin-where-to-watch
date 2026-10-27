@@ -64,6 +64,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public double AspectRatio { get; set; } = 1.1;
 
     /// <summary>
+    /// Gets or sets the minimum badge width in pixels, so badges stay readable on small thumbnails; 0 disables it.
+    /// </summary>
+    public double MinBadgeWidthPx { get; set; } = 72;
+
+    /// <summary>
     /// Gets or sets the margin as a percentage of the poster width.
     /// </summary>
     public double MarginPercent { get; set; } = 3;
@@ -114,7 +119,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     /// <returns>The render settings.</returns>
     public RenderSettings ToRenderSettings() => new(
-        new LayoutSettings(Corner, WidthPercent, AspectRatio, MarginPercent, SpacingPercent),
+        new LayoutSettings(Corner, WidthPercent, AspectRatio, MarginPercent, SpacingPercent, MinBadgeWidthPx),
         BackdropColor,
         CornerRadiusPercent,
         Math.Clamp(JpegQuality, 1, 100),

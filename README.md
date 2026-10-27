@@ -5,7 +5,7 @@ A Jellyfin 12 plugin that finds which streaming services carry your Movies and S
 ## What it does
 
 - **Tags** items with `stream:<provider>` (for example `stream:Netflix`) on Movies, Series and their Episodes (episodes carry their series' tags). Only `stream:*` tags are ever added or removed.
-- **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, backdrop and logo corner radius, space around the logo, output format and quality are configurable. The defaults give a rounded dark tile around each logo, bottom-left.
+- **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, backdrop and logo corner radius, space around the logo, output format and quality are configurable. A minimum badge width in pixels (default 72) keeps badges readable on small grid thumbnails; it is capped at 45% of the poster width and has no effect on larger posters. The defaults give a rounded dark tile around each logo, bottom-left.
 - Uses **flatrate** (subscription) availability only, with an **ordered country fallback** (for example `PL`, then `US`): the first country where a selected provider has the title is used.
 - **State and resume:** per-item results are stored in `<plugin data>/state.json`, written atomically and checkpointed during a run. An interrupted run resumes where it stopped. Items are re-checked after a configurable number of days; failed lookups are retried on the next run; changing the countries or selected providers triggers a full re-check.
 

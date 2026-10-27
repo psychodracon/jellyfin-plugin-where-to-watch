@@ -26,12 +26,14 @@ public enum BadgeCorner
 /// <param name="AspectRatio">Badge width divided by badge height.</param>
 /// <param name="MarginPercent">Distance from the poster edges as a percentage of the poster width.</param>
 /// <param name="SpacingPercent">Gap between stacked badges as a percentage of the poster width.</param>
+/// <param name="MinWidthPx">Minimum badge width in pixels, so badges stay readable on small thumbnails; 0 disables it.</param>
 public sealed record LayoutSettings(
     BadgeCorner Corner,
     double WidthPercent,
     double AspectRatio,
     double MarginPercent,
-    double SpacingPercent);
+    double SpacingPercent,
+    double MinWidthPx = 0);
 
 /// <summary>
 /// A badge rectangle in poster pixels.
@@ -47,6 +49,7 @@ public sealed record BadgeRect(int X, int Y, int Width, int Height);
 /// </summary>
 public static class BadgeLayout
 {
+    private const double MaxMinimumFraction = 0.45;
     /// <summary>
     /// Computes badge rectangles, first badge nearest the anchored edge.
     /// </summary>
@@ -57,7 +60,9 @@ public static class BadgeLayout
     /// <returns>One rectangle per badge that fits.</returns>
     public static IReadOnlyList<BadgeRect> Compute(int posterWidth, int posterHeight, int count, LayoutSettings settings)
     {
-        var width = (int)Math.Round(posterWidth * settings.WidthPercent / 100);
+        // The minimum keeps small thumbnails readable, but is capped so a tiny poster is not covered; an explicit percentage above the cap still wins.
+        var minimum = Math.Min(settings.MinWidthPx, posterWidth * MaxMinimumFraction);
+        var width = (int)Math.Round(Math.Max(posterWidth * settings.WidthPercent / 100, minimum));
         var height = (int)Math.Round(width / settings.AspectRatio);
         var margin = (int)Math.Round(posterWidth * settings.MarginPercent / 100);
         var spacing = (int)Math.Round(posterWidth * settings.SpacingPercent / 100);
