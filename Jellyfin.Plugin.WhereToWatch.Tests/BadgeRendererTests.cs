@@ -134,6 +134,36 @@ public class BadgeRendererTests
     }
 
     [Fact]
+    public void Badge_is_placed_inside_the_part_of_the_poster_the_card_actually_shows()
+    {
+        // A square poster in a 2:3 card: only x 50..250 is visible, so the badge belongs at x 50+10, not x 15.
+        var poster = Png(300, 300, new SKColor(128, 128, 128));
+        var logo = Png(40, 40, SKColors.Red);
+        var settings = new RenderSettings(new LayoutSettings(BadgeCorner.BottomLeft, 40, 2, 5, 1), "#FF000000", 0, 95);
+
+        var output = BadgeRenderer.Render(poster, [logo], settings, visibleAspect: 2.0 / 3);
+
+        // Visible region is 200 wide: badge 80x40, margin 10, so it sits at (60, 250).
+        using var result = SKBitmap.Decode(output.Bytes);
+        Assert.True(result.GetPixel(64, 255).Red < 40, $"expected the badge here, got {result.GetPixel(64, 255)}");
+        Assert.InRange(result.GetPixel(20, 270).Red, 120, 136);
+        Assert.InRange(result.GetPixel(40, 270).Red, 120, 136);
+    }
+
+    [Fact]
+    public void Without_a_visible_aspect_the_whole_poster_is_used()
+    {
+        var poster = Png(300, 300, new SKColor(128, 128, 128));
+        var settings = new RenderSettings(new LayoutSettings(BadgeCorner.BottomLeft, 40, 2, 5, 1), "#FF000000", 0, 95);
+
+        var output = BadgeRenderer.Render(poster, [Png(40, 40, SKColors.Red)], settings);
+
+        // Margin 5% of 300 = 15, so the badge starts at x=15.
+        using var result = SKBitmap.Decode(output.Bytes);
+        Assert.True(result.GetPixel(20, 270).Red < 40, $"expected the badge here, got {result.GetPixel(20, 270)}");
+    }
+
+    [Fact]
     public void Logo_corner_radius_rounds_the_logo_independently_of_the_backdrop()
     {
         var poster = Png(200, 300, new SKColor(128, 128, 128));

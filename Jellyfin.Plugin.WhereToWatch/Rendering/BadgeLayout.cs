@@ -54,23 +54,27 @@ public static class BadgeLayout
     /// <param name="posterHeight">Poster height in pixels.</param>
     /// <param name="count">Number of badges to place.</param>
     /// <param name="settings">Layout settings.</param>
+    /// <param name="region">The part of the poster that is visible, see <see cref="VisibleRegion"/>; the whole poster when omitted.</param>
     /// <returns>One rectangle per badge that fits.</returns>
-    public static IReadOnlyList<BadgeRect> Compute(int posterWidth, int posterHeight, int count, LayoutSettings settings)
+    public static IReadOnlyList<BadgeRect> Compute(int posterWidth, int posterHeight, int count, LayoutSettings settings, BadgeRect? region = null)
     {
-        var width = (int)Math.Round(posterWidth * settings.WidthPercent / 100);
+        var visible = region ?? new BadgeRect(0, 0, posterWidth, posterHeight);
+        var width = (int)Math.Round(visible.Width * settings.WidthPercent / 100);
         var height = (int)Math.Round(width / settings.AspectRatio);
-        var margin = (int)Math.Round(posterWidth * settings.MarginPercent / 100);
-        var spacing = (int)Math.Round(posterWidth * settings.SpacingPercent / 100);
+        var margin = (int)Math.Round(visible.Width * settings.MarginPercent / 100);
+        var spacing = (int)Math.Round(visible.Width * settings.SpacingPercent / 100);
 
         var rects = new List<BadgeRect>();
-        var x = settings.Corner is BadgeCorner.BottomRight or BadgeCorner.TopRight ? posterWidth - margin - width : margin;
+        var x = settings.Corner is BadgeCorner.BottomRight or BadgeCorner.TopRight ? visible.X + visible.Width - margin - width : visible.X + margin;
         var fromBottom = settings.Corner is BadgeCorner.BottomLeft or BadgeCorner.BottomRight;
+        var top = visible.Y + margin;
+        var bottom = visible.Y + visible.Height - margin;
 
         for (var i = 0; i < count; i++)
         {
-            var offset = margin + (i * (height + spacing));
-            var y = fromBottom ? posterHeight - offset - height : offset;
-            if (y < margin || y + height > posterHeight - margin)
+            var offset = i * (height + spacing);
+            var y = fromBottom ? bottom - height - offset : top + offset;
+            if (y < top || y + height > bottom)
             {
                 break;
             }
@@ -79,5 +83,20 @@ public static class BadgeLayout
         }
 
         return rects;
+    }
+
+    /// <summary>
+    /// Works out which part of an image a card shows. Cards scale the image to cover the card and centre it, so whatever
+    /// overflows on the longer axis is cropped away equally on both sides.
+    /// </summary>
+    /// <param name="imageWidth">Image width in pixels.</param>
+    /// <param name="imageHeight">Image height in pixels.</param>
+    /// <param name="cardAspect">Card width divided by card height.</param>
+    /// <returns>The visible rectangle in image pixels.</returns>
+    public static BadgeRect VisibleRegion(int imageWidth, int imageHeight, double cardAspect)
+    {
+        var width = Math.Min(imageWidth, (int)Math.Round(imageHeight * cardAspect));
+        var height = Math.Min(imageHeight, (int)Math.Round(imageWidth / cardAspect));
+        return new BadgeRect((imageWidth - width) / 2, (imageHeight - height) / 2, width, height);
     }
 }

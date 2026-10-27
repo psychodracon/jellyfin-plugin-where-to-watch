@@ -18,6 +18,7 @@ namespace Jellyfin.Plugin.WhereToWatch.Middleware;
 public sealed partial class BadgeMiddleware
 {
     private const long MaxImageBytes = 25 * 1024 * 1024;
+    private const double DefaultCardAspect = 2.0 / 3;
     private static readonly SemaphoreSlim RenderSlots = new(Math.Max(1, Environment.ProcessorCount));
 
     // Logged once per provider so a missing logo does not flood the log with one line per poster request.
@@ -172,7 +173,7 @@ public sealed partial class BadgeMiddleware
                     }
                 }
 
-                return logos.Count == 0 ? null : BadgeRenderer.Render(poster, logos, plan.Settings);
+                return logos.Count == 0 ? null : BadgeRenderer.Render(poster, logos, plan.Settings, plan.VisibleAspect);
             }
             finally
             {
@@ -216,15 +217,29 @@ public sealed partial class BadgeMiddleware
             return null;
         }
 
+        var visibleAspect = VisibleAspect(context.Request.Query);
         var key = RenderCache.Key(
             itemId.ToString("N"),
             context.Request.QueryString.Value ?? string.Empty,
             context.Request.Headers.Accept.ToString(),
+            visibleAspect.ToString("F4", CultureInfo.InvariantCulture),
             item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture),
             config.RenderFingerprint(),
             string.Join(',', providerIds.Select(id => id.ToString(CultureInfo.InvariantCulture) + ":" + _logos.Stamp(id))));
-        return new RenderPlan(key, providerIds, config.ToRenderSettings());
+        return new RenderPlan(key, providerIds, config.ToRenderSettings(), visibleAspect);
     }
 
-    private sealed record RenderPlan(string Key, IReadOnlyList<int> ProviderIds, RenderSettings Settings);
+    // Jellyfin's grid asks for fillWidth x fillHeight, the shape of the card; the web client then crops the poster to it.
+    // Other requests (such as the details page) show a standard 2:3 poster.
+    private static double VisibleAspect(IQueryCollection query)
+    {
+        if (int.TryParse(query["fillWidth"], out var width) && int.TryParse(query["fillHeight"], out var height) && width > 0 && height > 0)
+        {
+            return (double)width / height;
+        }
+
+        return DefaultCardAspect;
+    }
+
+    private sealed record RenderPlan(string Key, IReadOnlyList<int> ProviderIds, RenderSettings Settings, double VisibleAspect);
 }

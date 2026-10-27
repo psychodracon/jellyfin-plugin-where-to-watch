@@ -13,6 +13,8 @@ A Jellyfin 12 plugin that finds which streaming services carry your Movies and S
 
 A small middleware intercepts `Items/{id}/Images/Primary` requests for items that have providers in the state, draws the badges on the poster Jellyfin would have served, and caches the result under Jellyfin's cache folder. Disabling the plugin or the badges brings the original posters straight back.
 
+**Where badges go.** Jellyfin scales a poster to cover its card without cropping it, and the web client then crops the overflow equally on both sides. Badges are therefore placed (and sized, and inset by the margin) relative to the part of the poster the card actually shows: the card shape from the request's `fillWidth`/`fillHeight` in the grid, or a standard 2:3 poster elsewhere. Otherwise the margin on the cropped sides would disappear.
+
 **Poster format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP), so every client keeps getting a format it already accepts. JPEG is encoded without chroma subsampling (4:4:4) at quality 95 by default. Because the poster is decoded and encoded again, JPEG is never perfectly lossless; for the least loss pick `Png` (lossless but large) or `Webp` with quality 100 (lossless), provided your clients accept WebP.
 
 Logo lookup order per provider id:

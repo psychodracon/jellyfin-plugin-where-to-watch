@@ -57,8 +57,9 @@ public static class BadgeRenderer
     /// <param name="poster">Encoded poster image.</param>
     /// <param name="logos">Encoded logo images in priority order.</param>
     /// <param name="settings">Render settings.</param>
+    /// <param name="visibleAspect">Width divided by height of the card the poster is shown in. Badges are placed inside the centred part of the poster that card shows; the whole poster is used when omitted.</param>
     /// <returns>The badged poster and its content type.</returns>
-    public static RenderedImage Render(byte[] poster, IReadOnlyList<byte[]> logos, RenderSettings settings)
+    public static RenderedImage Render(byte[] poster, IReadOnlyList<byte[]> logos, RenderSettings settings, double? visibleAspect = null)
     {
         var sourceFormat = DetectFormat(poster);
         using var source = SKBitmap.Decode(poster);
@@ -66,7 +67,8 @@ public static class BadgeRenderer
         using var canvas = new SKCanvas(surface);
         canvas.DrawBitmap(source, 0, 0);
 
-        var rects = BadgeLayout.Compute(source.Width, source.Height, logos.Count, settings.Layout);
+        var region = visibleAspect is > 0 ? BadgeLayout.VisibleRegion(source.Width, source.Height, visibleAspect.Value) : null;
+        var rects = BadgeLayout.Compute(source.Width, source.Height, logos.Count, settings.Layout, region);
         using var backdrop = new SKPaint { Color = SKColor.Parse(settings.BackdropColor), IsAntialias = true };
         using var logoPaint = new SKPaint { IsAntialias = true };
         for (var i = 0; i < rects.Count; i++)

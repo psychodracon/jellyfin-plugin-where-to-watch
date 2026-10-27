@@ -63,4 +63,36 @@ public class BadgeLayoutTests
     {
         Assert.Empty(BadgeLayout.Compute(1000, 1500, 0, Settings(BadgeCorner.BottomLeft)));
     }
+
+    [Fact]
+    public void Visible_region_trims_the_sides_of_an_image_wider_than_the_card()
+    {
+        // The client shows the image centred and cropped to the card, so a square image in a 2:3 card loses 50px each side.
+        Assert.Equal(new BadgeRect(50, 0, 200, 300), BadgeLayout.VisibleRegion(300, 300, 2.0 / 3));
+    }
+
+    [Fact]
+    public void Visible_region_trims_top_and_bottom_of_an_image_taller_than_the_card()
+    {
+        Assert.Equal(new BadgeRect(0, 50, 200, 300), BadgeLayout.VisibleRegion(200, 400, 2.0 / 3));
+    }
+
+    [Fact]
+    public void Visible_region_is_the_whole_image_when_the_shapes_match()
+    {
+        Assert.Equal(new BadgeRect(0, 0, 200, 300), BadgeLayout.VisibleRegion(200, 300, 2.0 / 3));
+    }
+
+    [Fact]
+    public void Badges_are_sized_and_inset_relative_to_the_visible_region()
+    {
+        var region = BadgeLayout.VisibleRegion(300, 300, 2.0 / 3);
+
+        var left = BadgeLayout.Compute(300, 300, 1, Settings(BadgeCorner.BottomLeft), region);
+        var right = BadgeLayout.Compute(300, 300, 1, Settings(BadgeCorner.BottomRight), region);
+
+        // Region is 200 wide: width 22% = 44, height 22, margin 3% = 6 on every side of the region, not of the image.
+        Assert.Equal([new BadgeRect(56, 272, 44, 22)], left);
+        Assert.Equal([new BadgeRect(200, 272, 44, 22)], right);
+    }
 }
