@@ -51,7 +51,6 @@
         providers.forEach(function (provider) {
             var id = pick(provider, 'Id');
             var name = pick(provider, 'Name') || '';
-            var url = pick(provider, 'Url') || fallbackLink;
 
             var image = document.createElement('img');
             image.src = ApiClient.getUrl('WhereToWatch/logo/' + id);
@@ -59,9 +58,10 @@
             image.title = name;
             image.style.cssText = 'display: block; width: 3.4em; height: 3.4em; border-radius: 0.5em; object-fit: cover;';
 
-            if (isWebUrl(url)) {
+            // TMDB's API offers one watch page per title, not per provider, so every logo opens that page.
+            if (isWebUrl(fallbackLink)) {
                 var anchor = document.createElement('a');
-                anchor.href = url;
+                anchor.href = fallbackLink;
                 anchor.target = '_blank';
                 anchor.rel = 'noopener noreferrer';
                 anchor.appendChild(image);

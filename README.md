@@ -28,7 +28,7 @@ Provider ids are shown next to each provider on the configuration page.
 
 On a movie or series details page of the **web UI** (not the phone, TV or other apps), a **Watch on** row (Polish UI: **Oglądaj na**) is added under the overview. It shows the logos of the providers you selected, from the first country in your list that has data, with a small JustWatch credit (TMDB requires crediting JustWatch for this data).
 
-- **Links.** TMDB gives no per-provider links, only one watch page per title and country. Netflix and Prime Video logos link to that provider's own search page for the title; other providers (Disney+ and HBO Max have no public search URL) link to the TMDB watch page. The patterns live in `ProviderLinks`.
+- **Links.** Every logo opens the TMDB watch page for the title and country, which is the one link TMDB's API provides. TMDB's API has no per-provider links, so the page itself then lists where to watch.
 - **How it gets into the page.** The plugin adds the script, inline, to Jellyfin's `index.html` as it is served; nothing on disk is modified. It is inline rather than a separate `.js` URL because a reverse proxy in front of Jellyfin can block unfamiliar script requests. Turn the row off with "Show a Watch on row" on the config page.
 - **Existing scans.** The first scan after installing this version refreshes every item once, because the link and provider names are new in the state.
 

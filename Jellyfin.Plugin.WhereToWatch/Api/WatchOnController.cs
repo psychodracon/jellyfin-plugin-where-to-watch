@@ -1,4 +1,3 @@
-using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.State;
 using MediaBrowser.Controller.Library;
@@ -13,14 +12,13 @@ namespace Jellyfin.Plugin.WhereToWatch.Api;
 /// </summary>
 /// <param name="Id">TMDB provider id.</param>
 /// <param name="Name">Provider name.</param>
-/// <param name="Url">The provider's own search page for the title, when known.</param>
-public sealed record WatchOnProvider(int Id, string Name, string? Url);
+public sealed record WatchOnProvider(int Id, string Name);
 
 /// <summary>
 /// What the details page shows for an item.
 /// </summary>
 /// <param name="Country">Country the providers were found in.</param>
-/// <param name="Link">TMDB watch page (powered by JustWatch), used for providers without a search page and for the credit.</param>
+/// <param name="Link">TMDB watch page (powered by JustWatch); every logo and the credit link to it, because TMDB's API gives no per-provider links.</param>
 /// <param name="Providers">Providers in priority order.</param>
 public sealed record WatchOnResponse(string? Country, string? Link, IReadOnlyList<WatchOnProvider> Providers);
 
@@ -66,10 +64,7 @@ public sealed class WatchOnController : ControllerBase
         }
 
         var providers = state.ProviderIds
-            .Select((id, index) => new WatchOnProvider(
-                id,
-                index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty,
-                ProviderLinks.SearchUrl(id, item.Name) ?? state.Link))
+            .Select((id, index) => new WatchOnProvider(id, index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty))
             .ToList();
         return new WatchOnResponse(state.Country, state.Link, providers);
     }
