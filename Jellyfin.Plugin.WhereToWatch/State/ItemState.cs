@@ -44,4 +44,14 @@ public sealed record ItemState(
     /// Gets the run that last handled the item. Stamped by <see cref="StateStore"/>.
     /// </summary>
     public string? RunId { get; init; }
+
+    /// <summary>
+    /// Gets the TMDB watch page (powered by JustWatch) for this title in <see cref="Country"/>, when TMDB provides one.
+    /// </summary>
+    public string? Link { get; init; }
+
+    /// <summary>
+    /// Gets the names of <see cref="ProviderIds"/>, in the same order. Empty for items checked before names were stored.
+    /// </summary>
+    public IReadOnlyList<string> ProviderNames { get; init; } = [];
 }

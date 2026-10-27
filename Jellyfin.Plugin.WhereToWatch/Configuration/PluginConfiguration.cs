@@ -44,6 +44,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool BadgesEnabled { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether the "Watch on" row is added to the details page of the web UI.
+    /// </summary>
+    public bool WatchOnEnabled { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the maximum number of badges per poster.
     /// </summary>
     public int MaxBadges { get; set; } = 3;
@@ -157,7 +162,8 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <returns>A short hex string.</returns>
     public string ResolutionFingerprint()
     {
-        var text = JsonSerializer.Serialize(new { Countries, SelectedProviderIds, TagsEnabled });
+        // Schema changes whenever the state stores something new, so the next scan refreshes every item once.
+        var text = JsonSerializer.Serialize(new { Schema = 2, Countries, SelectedProviderIds, TagsEnabled });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
     }
 }

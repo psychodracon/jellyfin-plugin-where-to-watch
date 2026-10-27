@@ -73,8 +73,8 @@ public sealed class TmdbClient : IDisposable
     /// <param name="isSeries">True for a series, false for a movie.</param>
     /// <param name="tmdbId">TMDB id of the title.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Flatrate providers per country, or null when TMDB does not know the title.</returns>
-    public async Task<IReadOnlyDictionary<string, IReadOnlyList<ProviderRef>>?> GetFlatrateAsync(string apiKey, bool isSeries, int tmdbId, CancellationToken cancellationToken)
+    /// <returns>Flatrate providers and watch-page links per country, or null when TMDB does not know the title.</returns>
+    public async Task<TitleAvailability?> GetFlatrateAsync(string apiKey, bool isSeries, int tmdbId, CancellationToken cancellationToken)
     {
         var kind = isSeries ? "tv" : "movie";
         var response = await GetAsync<TitleProvidersResponse>(apiKey, $"/{kind}/{tmdbId.ToString(CultureInfo.InvariantCulture)}/watch/providers", cancellationToken).ConfigureAwait(false);
@@ -83,13 +83,18 @@ public sealed class TmdbClient : IDisposable
             return null;
         }
 
-        var result = new Dictionary<string, IReadOnlyList<ProviderRef>>(StringComparer.OrdinalIgnoreCase);
+        var flatrate = new Dictionary<string, IReadOnlyList<ProviderRef>>(StringComparer.OrdinalIgnoreCase);
+        var links = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (country, region) in response.Results ?? [])
         {
-            result[country] = (region.Flatrate ?? []).Select(p => new ProviderRef(p.ProviderId, p.ProviderName)).ToList();
+            flatrate[country] = (region.Flatrate ?? []).Select(p => new ProviderRef(p.ProviderId, p.ProviderName)).ToList();
+            if (!string.IsNullOrWhiteSpace(region.Link))
+            {
+                links[country] = region.Link;
+            }
         }
 
-        return result;
+        return new TitleAvailability(flatrate, links);
     }
 
     /// <summary>
@@ -207,5 +212,16 @@ public sealed class TmdbClient : IDisposable
     private sealed class RegionEntry
     {
         public List<ProviderEntry>? Flatrate { get; set; }
+
+        public string? Link { get; set; }
     }
 }
+
+/// <summary>
+/// What TMDB knows about where a title can be watched.
+/// </summary>
+/// <param name="Flatrate">Subscription providers per country.</param>
+/// <param name="Links">TMDB watch page (powered by JustWatch) per country, where TMDB provides one.</param>
+public sealed record TitleAvailability(
+    IReadOnlyDictionary<string, IReadOnlyList<ProviderRef>> Flatrate,
+    IReadOnlyDictionary<string, string> Links);

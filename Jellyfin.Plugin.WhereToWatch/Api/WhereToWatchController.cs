@@ -95,10 +95,10 @@ public sealed class WhereToWatchController : ControllerBase
         {
             try
             {
-                var flatrate = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId.Value, cancellationToken).ConfigureAwait(false);
+                var availability = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId.Value, cancellationToken).ConfigureAwait(false);
                 providersByCountry = config.Countries.ToDictionary(
                     c => c.ToUpperInvariant(),
-                    c => flatrate is not null && flatrate.TryGetValue(c, out var offered)
+                    c => availability is not null && availability.Flatrate.TryGetValue(c, out var offered)
                         ? offered.Select(p => new { p.Id, p.Name, Selected = config.SelectedProviderIds.Contains(p.Id) }).ToArray()
                         : []);
             }

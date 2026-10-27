@@ -23,6 +23,7 @@
           </div>
           <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="TagsEnabled" /><span>Add stream: tags</span></label>
           <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="BadgesEnabled" /><span>Draw badges on posters</span></label>
+          <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="WatchOnEnabled" /><span>Show a "Watch on" row on the details page (web UI)</span></label>
 
           <h3>Providers</h3>
           <div class="fieldDescription">Checked providers get tags and badges. The order of the checked ones is the badge priority.</div>
@@ -77,7 +78,7 @@
         var page = document.querySelector('#WhereToWatchConfigPage');
         var textFields = ['TmdbApiKey', 'BackdropColor'];
         var numberFields = ['TtlDays', 'MaxBadges', 'WidthPercent', 'AspectRatio', 'MarginPercent', 'SpacingPercent', 'CornerRadiusPercent', 'PaddingPercent', 'LogoCornerRadiusPercent', 'JpegQuality'];
-        var checkFields = ['TagsEnabled', 'BadgesEnabled'];
+        var checkFields = ['TagsEnabled', 'BadgesEnabled', 'WatchOnEnabled'];
         var selectedIds = [];
         var providers = [];
 

@@ -18,6 +18,7 @@ namespace Jellyfin.Plugin.WhereToWatch.Middleware;
 public sealed partial class BadgeMiddleware
 {
     private const long MaxImageBytes = 25 * 1024 * 1024;
+    private const long MaxPageBytes = 5 * 1024 * 1024;
     // Poster cards are a fixed 2:3 box. The web client scales the poster to cover that box and centres it, so a poster of any
     // other shape is cropped at the sides (or top and bottom). The fillWidth/fillHeight in the request is the poster's own shape,
     // not the card's, so it cannot be used for this.
@@ -60,6 +61,12 @@ public sealed partial class BadgeMiddleware
     /// <returns>A task that completes when the response is written.</returns>
     public async Task InvokeAsync(HttpContext context)
     {
+        if (IsWebIndex(context.Request))
+        {
+            await AddScriptToWebIndexAsync(context).ConfigureAwait(false);
+            return;
+        }
+
         var plan = TryBuildPlan(context);
         if (plan is null)
         {
@@ -127,6 +134,71 @@ public sealed partial class BadgeMiddleware
 
         _cache.Set(plan.Key, rendered);
         await WriteAsync(context, rendered, etag).ConfigureAwait(false);
+    }
+
+    private static bool IsWebIndex(HttpRequest request)
+    {
+        var path = request.Path.Value ?? string.Empty;
+        return HttpMethods.IsGet(request.Method)
+            && (path.Equals("/web/", StringComparison.OrdinalIgnoreCase) || path.Equals("/web/index.html", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Relative, so it keeps working when Jellyfin is served under a base URL; the version busts the browser cache on upgrades.
+    private static string ScriptUrl() => "../WhereToWatch/watchon.js?v=" + typeof(BadgeMiddleware).Assembly.GetName().Version;
+
+    private async Task AddScriptToWebIndexAsync(HttpContext context)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null || !config.WatchOnEnabled)
+        {
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
+
+        // Ask for the whole, uncompressed page so it can be edited as text.
+        context.Request.Headers.Remove(HeaderNames.IfNoneMatch);
+        context.Request.Headers.Remove(HeaderNames.IfModifiedSince);
+        context.Request.Headers.Remove(HeaderNames.IfRange);
+        context.Request.Headers.Remove(HeaderNames.Range);
+        context.Request.Headers.Remove(HeaderNames.AcceptEncoding);
+
+        var original = context.Response.Body;
+        await using var buffer = new MemoryStream();
+        context.Response.Body = buffer;
+        try
+        {
+            await _next(context).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.Response.Body = original;
+        }
+
+        var isHtml = context.Response.StatusCode == StatusCodes.Status200OK
+            && (context.Response.ContentType ?? string.Empty).StartsWith("text/html", StringComparison.OrdinalIgnoreCase)
+            && !context.Response.Headers.ContainsKey(HeaderNames.ContentEncoding)
+            && buffer.Length is > 0 and <= MaxPageBytes;
+
+        if (!isHtml)
+        {
+            buffer.Position = 0;
+            if (buffer.Length > 0)
+            {
+                context.Response.ContentLength = buffer.Length;
+                await buffer.CopyToAsync(original, context.RequestAborted).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        var page = System.Text.Encoding.UTF8.GetBytes(HtmlInjector.Inject(System.Text.Encoding.UTF8.GetString(buffer.ToArray()), ScriptUrl()));
+        context.Response.ContentLength = page.Length;
+
+        // The page changed, so the original validators no longer describe it, and it must not outlive a plugin upgrade in a cache.
+        context.Response.Headers.Remove(HeaderNames.ETag);
+        context.Response.Headers.Remove(HeaderNames.LastModified);
+        context.Response.Headers.CacheControl = "no-cache";
+        await original.WriteAsync(page, context.RequestAborted).ConfigureAwait(false);
     }
 
     [GeneratedRegex(@"/Items/(?<id>[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})/Images/Primary(?:/0)?(?:/|$)", RegexOptions.IgnoreCase)]

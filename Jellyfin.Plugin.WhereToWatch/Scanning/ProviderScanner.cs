@@ -156,8 +156,8 @@ public sealed class ProviderScanner
 
         try
         {
-            var flatrate = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId, cancellationToken).ConfigureAwait(false);
-            if (flatrate is null)
+            var availability = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId, cancellationToken).ConfigureAwait(false);
+            if (availability is null)
             {
                 _state.Record(new ItemState(item.Id, tmdbId, null, [], ItemStatus.NotFound, null));
                 if (config.TagsEnabled)
@@ -168,8 +168,13 @@ public sealed class ProviderScanner
                 return;
             }
 
-            var resolution = CountryResolver.Resolve(config.Countries, config.SelectedProviderIds, flatrate);
-            _state.Record(new ItemState(item.Id, tmdbId, resolution.Country, resolution.Providers.Select(p => p.Id).ToList(), ItemStatus.Resolved, null));
+            var resolution = CountryResolver.Resolve(config.Countries, config.SelectedProviderIds, availability.Flatrate);
+            var link = resolution.Country is not null && availability.Links.TryGetValue(resolution.Country, out var watchPage) ? watchPage : null;
+            _state.Record(new ItemState(item.Id, tmdbId, resolution.Country, resolution.Providers.Select(p => p.Id).ToList(), ItemStatus.Resolved, null)
+            {
+                Link = link,
+                ProviderNames = resolution.Providers.Select(p => p.Name).ToList(),
+            });
 
             if (config.TagsEnabled)
             {

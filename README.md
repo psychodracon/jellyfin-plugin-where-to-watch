@@ -24,6 +24,14 @@ Logo lookup order per provider id:
 
 Provider ids are shown next to each provider on the configuration page.
 
+## "Watch on" row (web UI)
+
+On a movie or series details page of the **web UI** (not the phone, TV or other apps), a **Watch on** row (Polish UI: **Oglądaj na**) is added under the overview. It shows the logos of the providers you selected, from the first country in your list that has data, with a small JustWatch credit (TMDB requires crediting JustWatch for this data).
+
+- **Links.** TMDB gives no per-provider links, only one watch page per title and country. Netflix and Prime Video logos link to that provider's own search page for the title; other providers (Disney+ and HBO Max have no public search URL) link to the TMDB watch page. The patterns live in `ProviderLinks`.
+- **How it gets into the page.** The plugin adds one script tag (`../WhereToWatch/watchon.js`) to Jellyfin's `index.html` as it is served; nothing on disk is modified. Turn the row off with "Show a Watch on row" on the config page.
+- **Existing scans.** The first scan after installing this version refreshes every item once, because the link and provider names are new in the state.
+
 ## Scheduled tasks
 
 | Task | Runs | What it does |
@@ -43,6 +51,11 @@ Settings that change tags (for example turning tags on later) take effect at the
 - `GET items/{id}` how one item was resolved: stream tags, recorded state, chosen badges, and what TMDB reports right now for each configured country
 - `GET state` counts by status, latest run and its progress
 
+Used by the "Watch on" row, open to any signed-in user except where noted:
+- `GET watch/{itemId}` the providers to show for an item (needs sign-in)
+- `GET logo/{providerId}` a provider logo (anonymous, as it is loaded through an image tag)
+- `GET watchon.js` the script added to the web page (anonymous)
+
 ## Build
 
 Requires the .NET 10 SDK.
@@ -56,9 +69,9 @@ Copy `Jellyfin.Plugin.WhereToWatch.dll` into `<jellyfin-data>/plugins/Where to W
 
 ## Status
 
-The pure logic (country fallback, tag diff, badge layout and rendering, state store) is covered by tests. The Jellyfin integration (middleware, scheduled tasks, controller, configuration page) compiles against Jellyfin 12 but still needs to be verified on a running server, in particular that the image middleware intercepts poster requests.
+The pure logic (country fallback, tag diff, badge layout and rendering, state store, provider links, page injection) is covered by tests. The poster badges have been verified on a running Jellyfin 12 server. The "Watch on" row (the `index.html` injection, the endpoints and the browser script) has not yet been verified on a running server.
 
-Not yet implemented: SVG logos, cache pre-warming in the daily task, and the Jellyfin 12 spike with a fallback to baking badges into stored posters if the middleware does not intercept poster requests.
+Not yet implemented: SVG logos and cache pre-warming in the daily task.
 
 ## License
 

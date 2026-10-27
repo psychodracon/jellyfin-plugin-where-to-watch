@@ -218,6 +218,64 @@ public sealed class StateStoreTests : IDisposable
         Assert.Equal(10, summary.RunTotal);
     }
 
+    [Fact]
+    public void Watch_page_link_survives_save_and_reload()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://www.themoviedb.org/movie/1/watch?locale=PL" });
+        store.Save();
+
+        var reloaded = new StateStore(StatePath, _clock).Get(id);
+
+        Assert.Equal("https://www.themoviedb.org/movie/1/watch?locale=PL", reloaded!.Link);
+    }
+
+    [Fact]
+    public void Items_recorded_without_a_link_reload_without_one()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null));
+        store.Save();
+
+        Assert.Null(new StateStore(StatePath, _clock).Get(id)!.Link);
+    }
+
+    [Fact]
+    public void Recording_again_replaces_the_previous_link()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://example.test/old" });
+        store.Record(new ItemState(id, 1, "US", [8], ItemStatus.Resolved, null));
+
+        Assert.Null(store.Get(id)!.Link);
+    }
+
+    [Fact]
+    public void Provider_names_survive_save_and_reload_in_step_with_the_ids()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8, 1899], ItemStatus.Resolved, null) { ProviderNames = ["Netflix", "HBO Max"] });
+        store.Save();
+
+        var reloaded = new StateStore(StatePath, _clock).Get(id);
+
+        Assert.Equal(["Netflix", "HBO Max"], reloaded!.ProviderNames);
+    }
+
+    [Fact]
+    public void Items_saved_before_names_existed_load_with_an_empty_name_list()
+    {
+        File.WriteAllText(StatePath, "{\"Items\":[{\"ItemId\":\"" + Guid.Empty + "\",\"TmdbId\":1,\"Country\":\"PL\",\"ProviderIds\":[8],\"Status\":\"Resolved\",\"Error\":null,\"LastChecked\":\"2026-10-27T03:00:00+00:00\",\"RunId\":null}]}");
+
+        var loaded = new StateStore(StatePath, _clock).Get(Guid.Empty);
+
+        Assert.Empty(loaded!.ProviderNames);
+    }
+
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;
