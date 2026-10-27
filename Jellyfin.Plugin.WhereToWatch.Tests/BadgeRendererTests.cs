@@ -110,6 +110,30 @@ public class BadgeRendererTests
     }
 
     [Fact]
+    public void Downscaled_logo_keeps_fine_strokes_crisp()
+    {
+        // 500px logo of thin vertical strokes (10 cycles) drawn at 40px. Trilinear mipmapping blurs strokes of this size.
+        using var stripes = new SKBitmap(500, 500);
+        for (var y = 0; y < 500; y++)
+        {
+            for (var x = 0; x < 500; x++)
+            {
+                stripes.SetPixel(x, y, (x % 50) < 25 ? SKColors.Black : SKColors.White);
+            }
+        }
+
+        using var logo = SKImage.FromBitmap(stripes);
+        var output = BadgeRenderer.Render(Png(200, 300, new SKColor(128, 128, 128)), [logo.Encode(SKEncodedImageFormat.Png, 100).ToArray()], Settings with { PaddingPercent = 0, LogoCornerRadiusPercent = 0 });
+
+        // Padding 0 puts the 40x40 logo at x 30..70, y 250..290. Root-mean-square deviation measures how strong the strokes are.
+        using var result = SKBitmap.Decode(output.Bytes);
+        var row = Enumerable.Range(30, 40).Select(x => (double)result.GetPixel(x, 270).Red).ToList();
+        var mean = row.Average();
+        var rms = Math.Sqrt(row.Average(v => Math.Pow(v - mean, 2)));
+        Assert.True(rms > 105, $"strokes are blurred, rms={rms:F1}");
+    }
+
+    [Fact]
     public void Logo_corner_radius_rounds_the_logo_independently_of_the_backdrop()
     {
         var poster = Png(200, 300, new SKColor(128, 128, 128));

@@ -95,10 +95,27 @@ public static class BadgeRenderer
             canvas.ClipRoundRect(new SKRoundRect(target, radius, radius), antialias: true);
         }
 
-        // Mipmapped linear sampling averages pixels when the logo is scaled down; the default would pick single pixels.
-        using var image = SKImage.FromBitmap(logo);
-        canvas.DrawImage(image, target, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+        // Cubic sampling keeps thin strokes crisp but aliases on big reductions, so very large logos are first shrunk smoothly to twice the target size.
+        using var prepared = ShrinkTowards(logo, target);
+        using var image = SKImage.FromBitmap(prepared ?? logo);
+        canvas.DrawImage(image, target, new SKSamplingOptions(SKCubicResampler.CatmullRom), paint);
         canvas.Restore();
+    }
+
+    private static SKBitmap? ShrinkTowards(SKBitmap logo, SKRect target)
+    {
+        var width = (int)Math.Ceiling(target.Width * 2);
+        var height = (int)Math.Ceiling(target.Height * 2);
+        if (logo.Width <= width || logo.Height <= height)
+        {
+            return null;
+        }
+
+        var smaller = new SKBitmap(width, height);
+        using var canvas = new SKCanvas(smaller);
+        using var source = SKImage.FromBitmap(logo);
+        canvas.DrawImage(source, new SKRect(0, 0, width, height), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+        return smaller;
     }
 
     private static SKEncodedImageFormat DetectFormat(byte[] image)
