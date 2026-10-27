@@ -1,0 +1,16 @@
+---
+name: "Where to Watch"
+guid: "3b675640-68ab-443a-adf8-55560d06ea1b"
+version: "12.0.0.0"
+targetAbi: "12.0.0.0"
+framework: "net10.0"
+overview: "Tags items with their streaming providers and draws provider badges on posters."
+description: >
+  Resolves flatrate streaming providers for Movies and Series from TMDB, adds stream:<provider> tags,
+  and draws provider badges on Primary posters on the fly without modifying stored images.
+category: "General"
+owner: "kamilkosek"
+artifacts:
+- "Jellyfin.Plugin.WhereToWatch.dll"
+changelog: >
+  Initial version.
