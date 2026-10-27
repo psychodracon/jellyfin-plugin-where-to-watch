@@ -103,7 +103,7 @@ public sealed class TmdbClient : IDisposable
         await _limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await _http.GetByteArrayAsync(new Uri("https://image.tmdb.org/t/p/original" + logoPath), cancellationToken).ConfigureAwait(false);
+            return await _http.GetByteArrayAsync(new Uri("https://image.tmdb.org/t/p/w500" + logoPath), cancellationToken).ConfigureAwait(false);
         }
         catch (HttpRequestException ex)
         {

@@ -58,7 +58,7 @@ public sealed class LogoStore
         Directory.CreateDirectory(CacheRoot);
         foreach (var provider in providers)
         {
-            if (provider.LogoPath is null || FindCustom(provider.Id) is not null || File.Exists(CachedPath(provider.Id)))
+            if (provider.LogoPath is null || Resolve(provider.Id) is not null)
             {
                 continue;
             }
@@ -67,17 +67,18 @@ public sealed class LogoStore
             if (bytes is not null)
             {
                 await File.WriteAllBytesAsync(CachedPath(provider.Id), bytes, cancellationToken).ConfigureAwait(false);
-
-                // Only now is it safe to drop the 154px icon an earlier version cached.
-                File.Delete(LegacyCachedPath(provider.Id));
             }
         }
     }
 
-    private static string CachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".original.img");
+    /// <summary>
+    /// Gets where a provider's logo is expected, for diagnostics.
+    /// </summary>
+    /// <param name="providerId">TMDB provider id.</param>
+    /// <returns>The cache path used for the downloaded icon.</returns>
+    public static string ExpectedPath(int providerId) => CachedPath(providerId);
 
-    // Earlier versions cached 154px icons as "<id>.img". They stay in use until the full-size icon has been downloaded.
-    private static string LegacyCachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".img");
+    private static string CachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".img");
 
     private static string? FindCustom(int providerId)
     {
@@ -87,7 +88,6 @@ public sealed class LogoStore
 
     private static string? Resolve(int providerId)
     {
-        return FindCustom(providerId)
-            ?? new[] { CachedPath(providerId), LegacyCachedPath(providerId) }.FirstOrDefault(File.Exists);
+        return FindCustom(providerId) ?? (File.Exists(CachedPath(providerId)) ? CachedPath(providerId) : null);
     }
 }

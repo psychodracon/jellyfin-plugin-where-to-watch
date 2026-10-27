@@ -20,6 +20,9 @@ public sealed partial class BadgeMiddleware
     private const long MaxImageBytes = 25 * 1024 * 1024;
     private static readonly SemaphoreSlim RenderSlots = new(Math.Max(1, Environment.ProcessorCount));
 
+    // Logged once per provider so a missing logo does not flood the log with one line per poster request.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> WarnedProviders = new();
+
     private readonly RequestDelegate _next;
     private readonly ILibraryManager _libraryManager;
     private readonly StateStore _state;
@@ -151,7 +154,24 @@ public sealed partial class BadgeMiddleware
             await RenderSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var logos = plan.ProviderIds.Select(_logos.Load).OfType<byte[]>().ToList();
+                var logos = new List<byte[]>();
+                foreach (var providerId in plan.ProviderIds)
+                {
+                    var logo = _logos.Load(providerId);
+                    if (logo is not null)
+                    {
+                        logos.Add(logo);
+                    }
+                    else if (WarnedProviders.TryAdd(providerId, true))
+                    {
+                        _logger.LogWarning(
+                            "Where to Watch: no logo for provider {ProviderId}, so its badge is skipped. Put {ProviderId}.png in the plugin's logos folder, or run a scan to download the TMDB icon to {Path}",
+                            providerId,
+                            providerId,
+                            LogoStore.ExpectedPath(providerId));
+                    }
+                }
+
                 return logos.Count == 0 ? null : BadgeRenderer.Render(poster, logos, plan.Settings);
             }
             finally
