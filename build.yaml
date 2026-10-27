@@ -9,7 +9,7 @@ description: >
   Resolves flatrate streaming providers for Movies and Series from TMDB, adds stream:<provider> tags,
   and draws provider badges on Primary posters on the fly without modifying stored images.
 category: "General"
-owner: "kamilkosek"
+owner: "psychodracon"
 artifacts:
 - "Jellyfin.Plugin.WhereToWatch.dll"
 changelog: >
