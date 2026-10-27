@@ -75,7 +75,7 @@ public sealed partial class BadgeMiddleware
                 return;
             }
 
-            await WriteAsync(context, cached, etag).ConfigureAwait(false);
+            await WriteAsync(context, cached, etag, plan).ConfigureAwait(false);
             return;
         }
 
@@ -123,7 +123,7 @@ public sealed partial class BadgeMiddleware
         }
 
         _cache.Set(plan.Key, rendered);
-        await WriteAsync(context, rendered, etag).ConfigureAwait(false);
+        await WriteAsync(context, rendered, etag, plan).ConfigureAwait(false);
     }
 
     [GeneratedRegex(@"/Items/(?<id>[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})/Images/Primary(?:/0)?(?:/|$)", RegexOptions.IgnoreCase)]
@@ -139,12 +139,15 @@ public sealed partial class BadgeMiddleware
         context.Response.Headers.Remove(HeaderNames.LastModified);
     }
 
-    private static async Task WriteAsync(HttpContext context, RenderedImage image, string etag)
+    private static async Task WriteAsync(HttpContext context, RenderedImage image, string etag, RenderPlan plan)
     {
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = image.ContentType;
         context.Response.ContentLength = image.Bytes.Length;
         SetHeaders(context, etag);
+
+        // Lets you check in the browser's network tab which build rendered the poster and which card shape it assumed.
+        context.Response.Headers["X-WhereToWatch"] = FormattableString.Invariant($"{typeof(BadgeMiddleware).Assembly.GetName().Version}; card-aspect={plan.VisibleAspect:F3}");
         await context.Response.Body.WriteAsync(image.Bytes, context.RequestAborted).ConfigureAwait(false);
     }
 
