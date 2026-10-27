@@ -53,7 +53,7 @@ public sealed partial class BadgeMiddleware
     /// <returns>A task that completes when the response is written.</returns>
     public async Task InvokeAsync(HttpContext context)
     {
-        var plan = Plan(context);
+        var plan = TryBuildPlan(context);
         if (plan is null)
         {
             await _next(context).ConfigureAwait(false);
@@ -168,7 +168,7 @@ public sealed partial class BadgeMiddleware
         }
     }
 
-    private RenderPlan? Plan(HttpContext context)
+    private RenderPlan? TryBuildPlan(HttpContext context)
     {
         if (!HttpMethods.IsGet(context.Request.Method))
         {
@@ -182,8 +182,8 @@ public sealed partial class BadgeMiddleware
             return null;
         }
 
-        var providerIds = _state.Get(itemId)?.ProviderIds.Take(Math.Max(0, config.MaxBadges)).ToList();
-        if (providerIds is not { Count: > 0 })
+        var providerIds = config.BadgeProviderIds(_state.Get(itemId));
+        if (providerIds.Count == 0)
         {
             return null;
         }
@@ -199,7 +199,7 @@ public sealed partial class BadgeMiddleware
             context.Request.QueryString.Value ?? string.Empty,
             item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture),
             config.RenderFingerprint(),
-            string.Join(',', providerIds.Select(id => id.ToString(CultureInfo.InvariantCulture) + ":" + _logos.Version(id))));
+            string.Join(',', providerIds.Select(id => id.ToString(CultureInfo.InvariantCulture) + ":" + _logos.Stamp(id))));
         return new RenderPlan(key, providerIds, config.ToRenderSettings());
     }
 

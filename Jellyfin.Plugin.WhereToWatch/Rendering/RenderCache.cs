@@ -56,6 +56,31 @@ public sealed class RenderCache
     }
 
     /// <summary>
+    /// Deletes the oldest renders until the cache fits the size limit.
+    /// </summary>
+    /// <param name="maxBytes">Maximum total size of cached renders.</param>
+    public void Prune(long maxBytes)
+    {
+        if (!Directory.Exists(_root))
+        {
+            return;
+        }
+
+        var files = new DirectoryInfo(_root).GetFiles("*.jpg").OrderBy(f => f.LastWriteTimeUtc).ToList();
+        var total = files.Sum(f => f.Length);
+        foreach (var file in files)
+        {
+            if (total <= maxBytes)
+            {
+                break;
+            }
+
+            total -= file.Length;
+            file.Delete();
+        }
+    }
+
+    /// <summary>
     /// Deletes every cached render.
     /// </summary>
     public void Clear()

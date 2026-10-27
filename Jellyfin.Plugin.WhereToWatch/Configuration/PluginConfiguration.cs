@@ -1,7 +1,9 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Xml.Serialization;
 using Jellyfin.Plugin.WhereToWatch.Rendering;
+using Jellyfin.Plugin.WhereToWatch.State;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.WhereToWatch.Configuration;

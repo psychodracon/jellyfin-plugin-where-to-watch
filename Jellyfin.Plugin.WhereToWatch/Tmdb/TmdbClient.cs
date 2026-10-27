@@ -28,7 +28,7 @@ public sealed class TmdbClient : IDisposable
 
     // A plain HttpClient on purpose: IHttpClientFactory logs full request URLs, which would put the api_key in the log.
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
-    private readonly SemaphoreSlim _gate = new(4);
+    private readonly SemaphoreSlim _limiter = new(4);
     private readonly ILogger<TmdbClient> _logger;
 
     /// <summary>
@@ -73,14 +73,18 @@ public sealed class TmdbClient : IDisposable
     /// <param name="isSeries">True for a series, false for a movie.</param>
     /// <param name="tmdbId">TMDB id of the title.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Flatrate providers per country; empty when the title is unknown to TMDB.</returns>
-    public async Task<IReadOnlyDictionary<string, IReadOnlyList<ProviderRef>>> GetFlatrateAsync(string apiKey, bool isSeries, int tmdbId, CancellationToken cancellationToken)
+    /// <returns>Flatrate providers per country, or null when TMDB does not know the title.</returns>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<ProviderRef>>?> GetFlatrateAsync(string apiKey, bool isSeries, int tmdbId, CancellationToken cancellationToken)
     {
         var kind = isSeries ? "tv" : "movie";
         var response = await GetAsync<TitleProvidersResponse>(apiKey, $"/{kind}/{tmdbId.ToString(CultureInfo.InvariantCulture)}/watch/providers", cancellationToken).ConfigureAwait(false);
+        if (response is null)
+        {
+            return null;
+        }
 
         var result = new Dictionary<string, IReadOnlyList<ProviderRef>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (country, region) in response?.Results ?? [])
+        foreach (var (country, region) in response.Results ?? [])
         {
             result[country] = (region.Flatrate ?? []).Select(p => new ProviderRef(p.ProviderId, p.ProviderName)).ToList();
         }
@@ -96,6 +100,7 @@ public sealed class TmdbClient : IDisposable
     /// <returns>The image bytes, or null when the download failed.</returns>
     public async Task<byte[]?> DownloadLogoAsync(string logoPath, CancellationToken cancellationToken)
     {
+        await _limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             return await _http.GetByteArrayAsync(new Uri("https://image.tmdb.org/t/p/w154" + logoPath), cancellationToken).ConfigureAwait(false);
@@ -105,13 +110,17 @@ public sealed class TmdbClient : IDisposable
             _logger.LogWarning(ex, "Could not download TMDB logo {LogoPath}", logoPath);
             return null;
         }
+        finally
+        {
+            _limiter.Release();
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
         _http.Dispose();
-        _gate.Dispose();
+        _limiter.Dispose();
     }
 
     private static HttpRequestMessage BuildRequest(string apiKey, string path)
@@ -128,9 +137,17 @@ public sealed class TmdbClient : IDisposable
         return new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}{path}{separator}api_key={Uri.EscapeDataString(apiKey)}");
     }
 
+    private static TimeSpan RetryDelay(HttpResponseMessage response, int attempt)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        var delay = retryAfter?.Delta
+            ?? (retryAfter?.Date is { } date ? date - DateTimeOffset.UtcNow : TimeSpan.FromSeconds(Math.Pow(2, attempt)));
+        return delay < TimeSpan.Zero ? TimeSpan.Zero : delay > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : delay;
+    }
+
     private async Task<T?> GetAsync<T>(string apiKey, string path, CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             for (var attempt = 0; ; attempt++)
@@ -145,7 +162,7 @@ public sealed class TmdbClient : IDisposable
 
                 if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt < MaxRetries)
                 {
-                    var delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                    var delay = RetryDelay(response, attempt);
                     _logger.LogInformation("TMDB rate limit hit, waiting {Delay}", delay);
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     continue;
@@ -158,7 +175,7 @@ public sealed class TmdbClient : IDisposable
         }
         finally
         {
-            _gate.Release();
+            _limiter.Release();
         }
     }
 

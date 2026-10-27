@@ -3,7 +3,9 @@ using Jellyfin.Plugin.WhereToWatch.State;
 using Jellyfin.Plugin.WhereToWatch.Tags;
 using Jellyfin.Plugin.WhereToWatch.Tmdb;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -40,28 +42,7 @@ public sealed class WhereToWatchController : ControllerBase
     /// </summary>
     /// <returns>The configuration.</returns>
     [HttpGet("config")]
-    public ActionResult<PluginConfiguration> GetConfig()
-    {
-        var config = Plugin.Instance!.Configuration;
-        return new PluginConfiguration
-        {
-            TmdbApiKey = string.IsNullOrEmpty(config.TmdbApiKey) ? string.Empty : "********",
-            Countries = config.Countries,
-            SelectedProviderIds = config.SelectedProviderIds,
-            TtlDays = config.TtlDays,
-            TagsEnabled = config.TagsEnabled,
-            BadgesEnabled = config.BadgesEnabled,
-            MaxBadges = config.MaxBadges,
-            Corner = config.Corner,
-            WidthPercent = config.WidthPercent,
-            AspectRatio = config.AspectRatio,
-            MarginPercent = config.MarginPercent,
-            SpacingPercent = config.SpacingPercent,
-            BackdropColor = config.BackdropColor,
-            CornerRadiusPercent = config.CornerRadiusPercent,
-            JpegQuality = config.JpegQuality,
-        };
-    }
+    public ActionResult<PluginConfiguration> GetConfig() => Plugin.Instance!.Configuration.Redacted();
 
     /// <summary>
     /// Lists the flatrate providers TMDB offers in the primary country, using the stored key.
@@ -78,7 +59,7 @@ public sealed class WhereToWatchController : ControllerBase
             return BadRequest("Set a TMDB API key first.");
         }
 
-        var region = string.IsNullOrWhiteSpace(country) ? config.Countries.FirstOrDefault() ?? "US" : country;
+        var region = string.IsNullOrWhiteSpace(country) ? config.PrimaryCountry : country;
         try
         {
             return Ok(await _tmdb.GetProvidersAsync(config.TmdbApiKey, region, cancellationToken).ConfigureAwait(false));
@@ -90,12 +71,13 @@ public sealed class WhereToWatchController : ControllerBase
     }
 
     /// <summary>
-    /// Shows how one item was resolved.
+    /// Shows how one item was resolved, including what TMDB reports right now for each configured country.
     /// </summary>
     /// <param name="id">Jellyfin item id.</param>
-    /// <returns>The item's tags and recorded state.</returns>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The item's tags, recorded state, chosen badges and live per-country providers.</returns>
     [HttpGet("items/{id}")]
-    public ActionResult<object> GetItem([FromRoute] Guid id)
+    public async Task<ActionResult<object>> GetItem([FromRoute] Guid id, CancellationToken cancellationToken)
     {
         var item = _libraryManager.GetItemById(id);
         if (item is null)
@@ -105,13 +87,37 @@ public sealed class WhereToWatchController : ControllerBase
 
         var config = Plugin.Instance!.Configuration;
         var state = _state.Get(id);
+        var tmdbId = state?.TmdbId ?? (item.TryGetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Tmdb, out var text) && int.TryParse(text, out var parsed) ? parsed : (int?)null);
+
+        object? providersByCountry = null;
+        string? tmdbError = null;
+        if (tmdbId is not null && !string.IsNullOrWhiteSpace(config.TmdbApiKey))
+        {
+            try
+            {
+                var flatrate = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId.Value, cancellationToken).ConfigureAwait(false);
+                providersByCountry = config.Countries.ToDictionary(
+                    c => c.ToUpperInvariant(),
+                    c => flatrate is not null && flatrate.TryGetValue(c, out var offered)
+                        ? offered.Select(p => new { p.Id, p.Name, Selected = config.SelectedProviderIds.Contains(p.Id) }).ToArray()
+                        : []);
+            }
+            catch (HttpRequestException ex)
+            {
+                tmdbError = ex.Message;
+            }
+        }
+
         return new
         {
             item.Id,
             item.Name,
-            StreamTags = (item.Tags ?? []).Where(t => t.StartsWith(TagDiff.Prefix, StringComparison.OrdinalIgnoreCase)).ToArray(),
+            TmdbId = tmdbId,
+            StreamTags = (item.Tags ?? []).Where(TagDiff.IsManaged).ToArray(),
             State = state,
-            Badges = state?.ProviderIds.Take(Math.Max(0, config.MaxBadges)).ToArray() ?? [],
+            Badges = config.BadgeProviderIds(state),
+            ProvidersByCountry = providersByCountry,
+            TmdbError = tmdbError,
         };
     }
 

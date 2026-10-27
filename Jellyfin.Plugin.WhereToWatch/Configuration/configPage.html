@@ -71,6 +71,16 @@
 
         function field(id) { return page.querySelector('#' + id); }
 
+        // Providers arrive sorted by TMDB display priority, so a provider's index is its default rank.
+        function insertByPriority(id) {
+          function rank(x) {
+            for (var i = 0; i < providers.length; i++) { if (providers[i].id === x) { return i; } }
+            return providers.length;
+          }
+          var at = selectedIds.findIndex(function (s) { return rank(s) > rank(id); });
+          if (at < 0) { selectedIds.push(id); } else { selectedIds.splice(at, 0, id); }
+        }
+
         function renderProviders() {
           var list = field('ProviderList');
           list.textContent = '';
@@ -85,7 +95,7 @@
             box.checked = checked;
             box.addEventListener('change', function () {
               selectedIds = selectedIds.filter(function (id) { return id !== p.id; });
-              if (box.checked) { selectedIds.push(p.id); }
+              if (box.checked) { insertByPriority(p.id); }
               renderProviders();
             });
             div.appendChild(box);

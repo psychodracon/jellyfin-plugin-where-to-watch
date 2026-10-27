@@ -2,11 +2,13 @@ using System.Diagnostics;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.WhereToWatch.Configuration;
 using Jellyfin.Plugin.WhereToWatch.Logos;
+using Jellyfin.Plugin.WhereToWatch.Rendering;
 using Jellyfin.Plugin.WhereToWatch.Resolution;
 using Jellyfin.Plugin.WhereToWatch.State;
 using Jellyfin.Plugin.WhereToWatch.Tags;
 using Jellyfin.Plugin.WhereToWatch.Tmdb;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
@@ -19,12 +21,14 @@ namespace Jellyfin.Plugin.WhereToWatch.Scanning;
 public sealed class ProviderScanner
 {
     private const int CheckpointItems = 200;
+    private const long MaxCacheBytes = 512L * 1024 * 1024;
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromSeconds(30);
 
     private readonly ILibraryManager _libraryManager;
     private readonly TmdbClient _tmdb;
     private readonly LogoStore _logos;
     private readonly StateStore _state;
+    private readonly RenderCache _cache;
     private readonly ILogger<ProviderScanner> _logger;
     private readonly SemaphoreSlim _running = new(1, 1);
 
@@ -35,13 +39,15 @@ public sealed class ProviderScanner
     /// <param name="tmdb">TMDB client.</param>
     /// <param name="logos">Logo store.</param>
     /// <param name="state">State store.</param>
+    /// <param name="cache">Render cache, pruned after each run.</param>
     /// <param name="logger">Logger.</param>
-    public ProviderScanner(ILibraryManager libraryManager, TmdbClient tmdb, LogoStore logos, StateStore state, ILogger<ProviderScanner> logger)
+    public ProviderScanner(ILibraryManager libraryManager, TmdbClient tmdb, LogoStore logos, StateStore state, RenderCache cache, ILogger<ProviderScanner> logger)
     {
         _libraryManager = libraryManager;
         _tmdb = tmdb;
         _logos = logos;
         _state = state;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -69,7 +75,7 @@ public sealed class ProviderScanner
 
         try
         {
-            _state.StartRun(force);
+            _state.StartRun(force, config.ResolutionFingerprint());
             await CacheSelectedLogosAsync(config, cancellationToken).ConfigureAwait(false);
 
             var items = _libraryManager.GetItemList(new InternalItemsQuery
@@ -78,6 +84,7 @@ public sealed class ProviderScanner
                 IsVirtualItem = false,
                 Recursive = true,
             });
+            _state.SetRunTotal(items.Count);
 
             var ttl = TimeSpan.FromDays(Math.Max(1, config.TtlDays));
             var handled = 0;
@@ -116,6 +123,7 @@ public sealed class ProviderScanner
             finally
             {
                 _state.Save();
+                _cache.Prune(MaxCacheBytes);
             }
         }
         finally
@@ -128,7 +136,7 @@ public sealed class ProviderScanner
     {
         try
         {
-            var country = config.Countries.FirstOrDefault() ?? "US";
+            var country = config.PrimaryCountry;
             var providers = await _tmdb.GetProvidersAsync(config.TmdbApiKey, country, cancellationToken).ConfigureAwait(false);
             await _logos.EnsureCachedAsync(providers.Where(p => config.SelectedProviderIds.Contains(p.Id)), cancellationToken).ConfigureAwait(false);
         }
@@ -148,14 +156,24 @@ public sealed class ProviderScanner
 
         try
         {
-            var flatrate = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is MediaBrowser.Controller.Entities.TV.Series, tmdbId, cancellationToken).ConfigureAwait(false);
-            var resolution = CountryResolver.Resolve(config.Countries, config.SelectedProviderIds, flatrate);
+            var flatrate = await _tmdb.GetFlatrateAsync(config.TmdbApiKey, item is Series, tmdbId, cancellationToken).ConfigureAwait(false);
+            if (flatrate is null)
+            {
+                _state.Record(new ItemState(item.Id, tmdbId, null, [], ItemStatus.NotFound, null));
+                if (config.TagsEnabled)
+                {
+                    await ApplyTagsAsync(item, [], cancellationToken).ConfigureAwait(false);
+                }
 
+                return;
+            }
+
+            var resolution = CountryResolver.Resolve(config.Countries, config.SelectedProviderIds, flatrate);
             _state.Record(new ItemState(item.Id, tmdbId, resolution.Country, resolution.Providers.Select(p => p.Id).ToList(), ItemStatus.Resolved, null));
 
             if (config.TagsEnabled)
             {
-                await ApplyTagsAsync(item, resolution.Providers.Select(p => p.Name), cancellationToken).ConfigureAwait(false);
+                await ApplyTagsAsync(item, resolution.Providers.Select(p => p.Name).ToList(), cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -169,7 +187,27 @@ public sealed class ProviderScanner
         }
     }
 
-    private static async Task ApplyTagsAsync(BaseItem item, IEnumerable<string> providerNames, CancellationToken cancellationToken)
+    private async Task ApplyTagsAsync(BaseItem item, IReadOnlyList<string> providerNames, CancellationToken cancellationToken)
+    {
+        await ApplyToItemAsync(item, providerNames, cancellationToken).ConfigureAwait(false);
+
+        // Episodes have no providers of their own on TMDB, so they carry their series' tags.
+        if (item is Series)
+        {
+            var episodes = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = [BaseItemKind.Episode],
+                ParentId = item.Id,
+                Recursive = true,
+            });
+            foreach (var episode in episodes)
+            {
+                await ApplyToItemAsync(episode, providerNames, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static async Task ApplyToItemAsync(BaseItem item, IEnumerable<string> providerNames, CancellationToken cancellationToken)
     {
         var current = item.Tags ?? [];
         var changes = TagDiff.Compute(current, providerNames);
@@ -178,10 +216,7 @@ public sealed class ProviderScanner
             return;
         }
 
-        item.Tags = current
-            .Where(tag => !changes.ToRemove.Contains(tag, StringComparer.OrdinalIgnoreCase))
-            .Concat(changes.ToAdd)
-            .ToArray();
+        item.Tags = TagDiff.Apply(current, changes);
         await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
     }
 }

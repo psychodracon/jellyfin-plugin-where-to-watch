@@ -40,8 +40,8 @@ public sealed class LogoStore
     /// Gets a token that changes when the logo file for a provider changes.
     /// </summary>
     /// <param name="providerId">TMDB provider id.</param>
-    /// <returns>A version string; empty when there is no logo.</returns>
-    public string Version(int providerId)
+    /// <returns>A token for cache keys; empty when there is no logo.</returns>
+    public string Stamp(int providerId)
     {
         var path = Resolve(providerId);
         return path is null ? string.Empty : File.GetLastWriteTimeUtc(path).Ticks.ToString(CultureInfo.InvariantCulture);

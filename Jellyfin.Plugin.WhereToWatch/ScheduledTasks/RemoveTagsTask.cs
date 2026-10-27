@@ -1,4 +1,5 @@
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.WhereToWatch.State;
 using Jellyfin.Plugin.WhereToWatch.Tags;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -12,14 +13,17 @@ namespace Jellyfin.Plugin.WhereToWatch.ScheduledTasks;
 public sealed class RemoveTagsTask : IScheduledTask
 {
     private readonly ILibraryManager _libraryManager;
+    private readonly StateStore _state;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RemoveTagsTask"/> class.
     /// </summary>
     /// <param name="libraryManager">Library manager.</param>
-    public RemoveTagsTask(ILibraryManager libraryManager)
+    /// <param name="state">State store, expired afterwards so the next scan tags items again.</param>
+    public RemoveTagsTask(ILibraryManager libraryManager, StateStore state)
     {
         _libraryManager = libraryManager;
+        _state = state;
     }
 
     /// <inheritdoc />
@@ -48,14 +52,18 @@ public sealed class RemoveTagsTask : IScheduledTask
             cancellationToken.ThrowIfCancellationRequested();
             var item = items[i];
             var tags = item.Tags ?? [];
-            if (tags.Any(t => t.StartsWith(TagDiff.Prefix, StringComparison.OrdinalIgnoreCase)))
+            if (tags.Any(TagDiff.IsManaged))
             {
-                item.Tags = tags.Where(t => !t.StartsWith(TagDiff.Prefix, StringComparison.OrdinalIgnoreCase)).ToArray();
+                item.Tags = tags.Where(t => !TagDiff.IsManaged(t)).ToArray();
                 await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             }
 
             progress.Report(100.0 * (i + 1) / items.Count);
         }
+
+        // Without this the daily scan would consider items fresh and not tag them again until their refresh interval passes.
+        _state.Expire();
+        _state.Save();
     }
 
     /// <inheritdoc />

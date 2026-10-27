@@ -4,10 +4,10 @@ A Jellyfin 12 plugin that finds which streaming services carry your Movies and S
 
 ## What it does
 
-- **Tags** items with `stream:<provider>` (for example `stream:Netflix`). Only `stream:*` tags are ever added or removed.
+- **Tags** items with `stream:<provider>` (for example `stream:Netflix`) on Movies, Series and their Episodes (episodes carry their series' tags). Only `stream:*` tags are ever added or removed.
 - **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, corner radius and JPEG quality are configurable.
 - Uses **flatrate** (subscription) availability only, with an **ordered country fallback** (for example `PL`, then `GB`): the first country where a selected provider has the title is used.
-- **State and resume:** per-item results are stored in `<plugin data>/state.json`, written atomically and checkpointed during a run. An interrupted run resumes where it stopped; items are re-checked after a configurable number of days.
+- **State and resume:** per-item results are stored in `<plugin data>/state.json`, written atomically and checkpointed during a run. An interrupted run resumes where it stopped. Items are re-checked after a configurable number of days; failed lookups are retried on the next run; changing the countries or selected providers triggers a full re-check.
 
 ## How badges are drawn
 
@@ -26,7 +26,9 @@ Provider ids are shown next to each provider on the configuration page.
 | --- | --- | --- |
 | Where to Watch: scan providers | daily 03:00 | Checks new items and items past the refresh interval; applies tags. Resumes after an interruption. |
 | Where to Watch: hard refresh | manual | Clears rendered posters and re-checks every item, ignoring the refresh interval. Does not remove tags. |
-| Where to Watch: remove all stream: tags | manual | Removes every `stream:` tag, for a clean uninstall. |
+| Where to Watch: remove all stream: tags | manual | Removes every `stream:` tag and marks all items due, so the next scan tags them again. |
+
+Rendered posters are cached under Jellyfin's cache folder and pruned to 512 MB after each scan.
 
 Settings that change tags (for example turning tags on later) take effect at the next check of an item; run the hard refresh to apply them immediately.
 
@@ -34,8 +36,8 @@ Settings that change tags (for example turning tags on later) take effect at the
 
 - `GET config` effective settings, TMDB key redacted
 - `GET tmdb/providers` flatrate providers TMDB lists for the primary country (optional `?country=`)
-- `GET items/{id}` how one item was resolved: stream tags, recorded state, chosen badges
-- `GET state` counts by status and latest run
+- `GET items/{id}` how one item was resolved: stream tags, recorded state, chosen badges, and what TMDB reports right now for each configured country
+- `GET state` counts by status, latest run and its progress
 
 ## Build
 
@@ -52,7 +54,7 @@ Copy `Jellyfin.Plugin.WhereToWatch.dll` into `<jellyfin-data>/plugins/Where to W
 
 The pure logic (country fallback, tag diff, badge layout and rendering, state store) is covered by tests. The Jellyfin integration (middleware, scheduled tasks, controller, configuration page) compiles against Jellyfin 12 but still needs to be verified on a running server, in particular that the image middleware intercepts poster requests.
 
-Not yet implemented: SVG logos, tags on Episodes.
+Not yet implemented: SVG logos, cache pre-warming in the daily task, and the Jellyfin 12 spike with a fallback to baking badges into stored posters if the middleware does not intercept poster requests.
 
 ## License
 
