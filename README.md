@@ -13,7 +13,7 @@ Your stored posters are never modified. Badges are drawn as posters are served, 
 ## Install
 
 1. Build the plugin (see [Build](#build)) or take `Jellyfin.Plugin.WhereToWatch.dll` from a build.
-2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.2.2.0`).
+2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.0.0.0`).
 3. **Delete any older `Where to Watch_*` folder.** If two exist, Jellyfin loads the highest version.
 4. **Restart Jellyfin.** Plugins are only loaded at startup.
 5. Check **Dashboard → Plugins**: "Where to Watch" should be listed with the version you installed.
