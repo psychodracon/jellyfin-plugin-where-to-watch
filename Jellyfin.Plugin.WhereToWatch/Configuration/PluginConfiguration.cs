@@ -49,6 +49,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool WatchOnEnabled { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether each "Watch on" logo links straight to the provider, using the links on TMDB's
+    /// watch page. Off by default: TMDB's API has no such links, and reading its page is restricted by TMDB's terms.
+    /// </summary>
+    public bool DirectLinksEnabled { get; set; }
+
+    /// <summary>
     /// Gets or sets the maximum number of badges per poster.
     /// </summary>
     public int MaxBadges { get; set; } = 3;

@@ -24,6 +24,7 @@ public sealed class TmdbClient : IDisposable
 {
     private const string ApiBase = "https://api.themoviedb.org/3";
     private const int MaxRetries = 4;
+    private const long MaxPageBytes = 3 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     // A plain HttpClient on purpose: IHttpClientFactory logs full request URLs, which would put the api_key in the log.
@@ -113,6 +114,52 @@ public sealed class TmdbClient : IDisposable
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Could not download TMDB logo {LogoPath}", logoPath);
+            return null;
+        }
+        finally
+        {
+            _limiter.Release();
+        }
+    }
+
+    /// <summary>
+    /// Downloads a TMDB watch page. Used only for the optional direct provider links.
+    /// </summary>
+    /// <param name="pageUrl">The watch page URL TMDB's API returned.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The page HTML, or null when the URL is not a TMDB page or the request failed.</returns>
+    public async Task<string?> GetWatchPageAsync(string pageUrl, CancellationToken cancellationToken)
+    {
+        // The URL comes from a response, so only ever fetch https pages on TMDB's own site.
+        if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || !(uri.Host.Equals("www.themoviedb.org", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("themoviedb.org", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        await _limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.UserAgent.ParseAdd("Jellyfin-WhereToWatch/1.0 (personal media server)");
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxPageBytes)
+            {
+                _logger.LogInformation("TMDB watch page request returned {Status}", (int)response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogInformation(ex, "Could not fetch the TMDB watch page");
+            return null;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Fetching the TMDB watch page timed out");
             return null;
         }
         finally

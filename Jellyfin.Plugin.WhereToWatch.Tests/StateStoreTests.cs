@@ -276,6 +276,84 @@ public sealed class StateStoreTests : IDisposable
         Assert.Empty(loaded!.ProviderNames);
     }
 
+    [Fact]
+    public void Direct_provider_links_survive_save_and_reload()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8, 119], ItemStatus.Resolved, null) { Link = "https://www.themoviedb.org/movie/1/watch?locale=PL" });
+        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix", [119] = "https://click.example/prime" });
+        store.Save();
+
+        var reloaded = new StateStore(StatePath, _clock).Get(id);
+
+        Assert.Equal("https://click.example/netflix", reloaded!.ProviderUrls![8]);
+        Assert.Equal("https://click.example/prime", reloaded.ProviderUrls[119]);
+        Assert.Equal(Start, reloaded.UrlsChecked);
+    }
+
+    [Fact]
+    public void Rescanning_an_item_keeps_its_direct_links_while_the_watch_page_is_unchanged()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
+        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
+
+        Assert.Equal("https://click.example/netflix", store.Get(id)!.ProviderUrls![8]);
+        Assert.Equal(Start, store.Get(id)!.UrlsChecked);
+    }
+
+    [Fact]
+    public void Rescanning_an_item_drops_its_direct_links_when_the_watch_page_changed()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
+        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+
+        store.Record(new ItemState(id, 1, "US", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=US" });
+
+        Assert.Null(store.Get(id)!.ProviderUrls);
+        Assert.Null(store.Get(id)!.UrlsChecked);
+    }
+
+    [Fact]
+    public void Direct_links_for_an_unknown_item_are_ignored()
+    {
+        var store = new StateStore(StatePath, _clock);
+
+        store.RecordProviderUrls(Guid.NewGuid(), new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+
+        Assert.Equal(0, store.Count);
+    }
+
+    [Fact]
+    public void Direct_links_are_due_when_never_checked_and_again_after_the_interval()
+    {
+        var ttl = TimeSpan.FromDays(7);
+        var retry = TimeSpan.FromHours(1);
+        var never = new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null);
+        var fetched = never with { ProviderUrls = new Dictionary<int, string> { [8] = "https://x.test" }, UrlsChecked = Start };
+
+        Assert.True(never.LinksDue(Start, ttl, retry));
+        Assert.False(fetched.LinksDue(Start.AddDays(6), ttl, retry));
+        Assert.True(fetched.LinksDue(Start.AddDays(8), ttl, retry));
+    }
+
+    [Fact]
+    public void An_empty_result_is_retried_after_the_short_delay_not_the_full_interval()
+    {
+        var ttl = TimeSpan.FromDays(7);
+        var retry = TimeSpan.FromHours(1);
+        var nothing = new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null) { ProviderUrls = new Dictionary<int, string>(), UrlsChecked = Start };
+
+        Assert.False(nothing.LinksDue(Start.AddMinutes(30), ttl, retry));
+        Assert.True(nothing.LinksDue(Start.AddMinutes(90), ttl, retry));
+    }
+
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

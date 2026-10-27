@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.State;
 using MediaBrowser.Controller.Library;
@@ -12,7 +13,8 @@ namespace Jellyfin.Plugin.WhereToWatch.Api;
 /// </summary>
 /// <param name="Id">TMDB provider id.</param>
 /// <param name="Name">Provider name.</param>
-public sealed record WatchOnProvider(int Id, string Name);
+/// <param name="Url">Direct link to the title at this provider, when direct links are enabled and TMDB's page has one; otherwise the TMDB page link is used.</param>
+public sealed record WatchOnProvider(int Id, string Name, string? Url);
 
 /// <summary>
 /// What the details page shows for an item.
@@ -32,6 +34,7 @@ public sealed class WatchOnController : ControllerBase
     private readonly StateStore _state;
     private readonly ILibraryManager _libraryManager;
     private readonly LogoStore _logos;
+    private readonly DirectLinkService _directLinks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WatchOnController"/> class.
@@ -39,11 +42,13 @@ public sealed class WatchOnController : ControllerBase
     /// <param name="state">State store.</param>
     /// <param name="libraryManager">Library manager.</param>
     /// <param name="logos">Logo store.</param>
-    public WatchOnController(StateStore state, ILibraryManager libraryManager, LogoStore logos)
+    /// <param name="directLinks">Direct provider links, used only when enabled.</param>
+    public WatchOnController(StateStore state, ILibraryManager libraryManager, LogoStore logos, DirectLinkService directLinks)
     {
         _state = state;
         _libraryManager = libraryManager;
         _logos = logos;
+        _directLinks = directLinks;
     }
 
     /// <summary>
@@ -53,18 +58,27 @@ public sealed class WatchOnController : ControllerBase
     /// <returns>The providers, or an empty list when there is nothing to show.</returns>
     [HttpGet("watch/{itemId}")]
     [Authorize]
-    public ActionResult<WatchOnResponse> GetWatchOn([FromRoute] Guid itemId)
+    public async Task<ActionResult<WatchOnResponse>> GetWatchOn([FromRoute] Guid itemId, CancellationToken cancellationToken)
     {
+        var config = Plugin.Instance!.Configuration;
         var empty = new WatchOnResponse(null, null, []);
         var state = _state.Get(itemId);
         var item = _libraryManager.GetItemById(itemId);
-        if (!Plugin.Instance!.Configuration.WatchOnEnabled || state is null || item is null || state.ProviderIds.Count == 0)
+        if (!config.WatchOnEnabled || state is null || item is null || state.ProviderIds.Count == 0)
         {
             return empty;
         }
 
+        // Direct links are opt-in; without them (or when they cannot be found) every logo uses the TMDB page link.
+        var direct = config.DirectLinksEnabled
+            ? await _directLinks.GetAsync(itemId, TimeSpan.FromDays(Math.Max(1, config.TtlDays)), cancellationToken).ConfigureAwait(false)
+            : null;
+
         var providers = state.ProviderIds
-            .Select((id, index) => new WatchOnProvider(id, index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty))
+            .Select((id, index) => new WatchOnProvider(
+                id,
+                index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty,
+                direct is not null && direct.TryGetValue(id, out var url) ? url : null))
             .ToList();
         return new WatchOnResponse(state.Country, state.Link, providers);
     }

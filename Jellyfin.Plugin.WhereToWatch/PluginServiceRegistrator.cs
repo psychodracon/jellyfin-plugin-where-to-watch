@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.Middleware;
 using Jellyfin.Plugin.WhereToWatch.Rendering;
@@ -20,6 +21,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<TmdbClient>();
+        serviceCollection.AddSingleton<DirectLinkService>();
         serviceCollection.AddSingleton<LogoStore>();
         serviceCollection.AddSingleton<RenderCache>();
         serviceCollection.AddSingleton<ProviderScanner>();

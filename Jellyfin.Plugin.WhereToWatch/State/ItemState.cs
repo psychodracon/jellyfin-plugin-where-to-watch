@@ -54,4 +54,32 @@ public sealed record ItemState(
     /// Gets the names of <see cref="ProviderIds"/>, in the same order. Empty for items checked before names were stored.
     /// </summary>
     public IReadOnlyList<string> ProviderNames { get; init; } = [];
+
+    /// <summary>
+    /// Gets the direct link of each provider (by TMDB provider id), read from TMDB's watch page on demand. Null until fetched.
+    /// </summary>
+    public IReadOnlyDictionary<int, string>? ProviderUrls { get; init; }
+
+    /// <summary>
+    /// Gets when <see cref="ProviderUrls"/> were last fetched, successfully or not.
+    /// </summary>
+    public DateTimeOffset? UrlsChecked { get; init; }
+
+    /// <summary>
+    /// Decides whether the direct links should be fetched again.
+    /// </summary>
+    /// <param name="now">The current time.</param>
+    /// <param name="ttl">How long fetched links stay valid.</param>
+    /// <param name="retryAfter">How long to wait before trying again after finding nothing.</param>
+    /// <returns>True when they were never fetched, or are older than <paramref name="ttl"/> (or <paramref name="retryAfter"/> when empty).</returns>
+    public bool LinksDue(DateTimeOffset now, TimeSpan ttl, TimeSpan retryAfter)
+    {
+        if (UrlsChecked is null)
+        {
+            return true;
+        }
+
+        var wait = ProviderUrls is { Count: > 0 } ? ttl : retryAfter;
+        return now - UrlsChecked.Value > wait;
+    }
 }
