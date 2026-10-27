@@ -56,12 +56,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the badge width as a percentage of the poster width.
     /// </summary>
-    public double WidthPercent { get; set; } = 22;
+    public double WidthPercent { get; set; } = 32;
 
     /// <summary>
     /// Gets or sets the badge width divided by its height.
     /// </summary>
-    public double AspectRatio { get; set; } = 2.9;
+    public double AspectRatio { get; set; } = 2.4;
 
     /// <summary>
     /// Gets or sets the margin as a percentage of the poster width.
