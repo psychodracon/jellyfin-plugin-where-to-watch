@@ -88,6 +88,28 @@ public class BadgeRendererTests
     }
 
     [Fact]
+    public void Downscaled_logo_is_smoothed_instead_of_picking_single_pixels()
+    {
+        // 1px black/white stripes scaled down 5x must average to grey; point sampling would give pure black or white.
+        using var stripes = new SKBitmap(200, 200);
+        for (var y = 0; y < 200; y++)
+        {
+            for (var x = 0; x < 200; x++)
+            {
+                stripes.SetPixel(x, y, x % 2 == 0 ? SKColors.Black : SKColors.White);
+            }
+        }
+
+        using var logo = SKImage.FromBitmap(stripes);
+        var output = BadgeRenderer.Render(Png(200, 300, new SKColor(128, 128, 128)), [logo.Encode(SKEncodedImageFormat.Png, 100).ToArray()], Settings with { PaddingPercent = 0, LogoCornerRadiusPercent = 0 });
+
+        // Padding 0 puts the 40x40 logo at x 30..70, y 250..290.
+        using var result = SKBitmap.Decode(output.Bytes);
+        var values = Enumerable.Range(40, 8).Select(x => (int)result.GetPixel(x, 270).Red).ToList();
+        Assert.All(values, v => Assert.InRange(v, 80, 180));
+    }
+
+    [Fact]
     public void Logo_corner_radius_rounds_the_logo_independently_of_the_backdrop()
     {
         var poster = Png(200, 300, new SKColor(128, 128, 128));

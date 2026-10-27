@@ -95,7 +95,9 @@ public static class BadgeRenderer
             canvas.ClipRoundRect(new SKRoundRect(target, radius, radius), antialias: true);
         }
 
-        canvas.DrawBitmap(logo, target, paint);
+        // Mipmapped linear sampling averages pixels when the logo is scaled down; the default would pick single pixels.
+        using var image = SKImage.FromBitmap(logo);
+        canvas.DrawImage(image, target, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
         canvas.Restore();
     }
 

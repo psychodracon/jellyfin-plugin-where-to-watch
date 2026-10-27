@@ -56,6 +56,7 @@ public sealed class LogoStore
     public async Task EnsureCachedAsync(IEnumerable<TmdbProvider> providers, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(CacheRoot);
+        DeleteLowResolutionLeftovers();
         foreach (var provider in providers)
         {
             if (provider.LogoPath is null || Resolve(provider.Id) is not null)
@@ -71,7 +72,16 @@ public sealed class LogoStore
         }
     }
 
-    private static string CachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".img");
+    private static string CachedPath(int providerId) => Path.Combine(CacheRoot, providerId.ToString(CultureInfo.InvariantCulture) + ".original.img");
+
+    // Earlier versions cached 154px icons as "<id>.img"; drop them so the full-size icons get downloaded.
+    private static void DeleteLowResolutionLeftovers()
+    {
+        foreach (var file in Directory.EnumerateFiles(CacheRoot, "*.img").Where(f => !f.EndsWith(".original.img", StringComparison.Ordinal)))
+        {
+            File.Delete(file);
+        }
+    }
 
     private static string? Resolve(int providerId)
     {
