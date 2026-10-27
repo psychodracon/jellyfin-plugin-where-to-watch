@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.WhereToWatch.State;
+using Jellyfin.Plugin.WhereToWatch.Tmdb;
 
 namespace Jellyfin.Plugin.WhereToWatch.Tests;
 
@@ -277,66 +278,80 @@ public sealed class StateStoreTests : IDisposable
     }
 
     [Fact]
-    public void Direct_provider_links_survive_save_and_reload()
+    public void Stream_links_survive_save_and_reload_with_their_names()
     {
         var id = Guid.NewGuid();
         var store = new StateStore(StatePath, _clock);
-        store.Record(new ItemState(id, 1, "PL", [8, 119], ItemStatus.Resolved, null) { Link = "https://www.themoviedb.org/movie/1/watch?locale=PL" });
-        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix", [119] = "https://click.example/prime" });
+        store.Record(new ItemState(id, 1, "PL", [8, 337], ItemStatus.Resolved, null) { Link = "https://www.themoviedb.org/movie/1/watch?locale=PL" });
+        store.RecordStreamLinks(id, [new StreamLink(8, "Netflix", "https://click.example/netflix"), new StreamLink(2706, "Disney Plus", "https://click.example/disney")]);
         store.Save();
 
         var reloaded = new StateStore(StatePath, _clock).Get(id);
 
-        Assert.Equal("https://click.example/netflix", reloaded!.ProviderUrls![8]);
-        Assert.Equal("https://click.example/prime", reloaded.ProviderUrls[119]);
-        Assert.Equal(Start, reloaded.UrlsChecked);
+        Assert.Equal(new StreamLink(8, "Netflix", "https://click.example/netflix"), reloaded!.StreamLinks![0]);
+        Assert.Equal(new StreamLink(2706, "Disney Plus", "https://click.example/disney"), reloaded.StreamLinks[1]);
+        Assert.Equal(Start, reloaded.LinksFetched);
     }
 
     [Fact]
-    public void Rescanning_an_item_keeps_its_direct_links_while_the_watch_page_is_unchanged()
+    public void Rescanning_an_item_keeps_its_stream_links_while_the_watch_page_is_unchanged()
     {
         var id = Guid.NewGuid();
         var store = new StateStore(StatePath, _clock);
         store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
-        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+        store.RecordStreamLinks(id, [new StreamLink(8, "Netflix", "https://click.example/netflix")]);
 
         store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
 
-        Assert.Equal("https://click.example/netflix", store.Get(id)!.ProviderUrls![8]);
-        Assert.Equal(Start, store.Get(id)!.UrlsChecked);
+        Assert.Equal("https://click.example/netflix", store.Get(id)!.StreamLinks![0].Url);
+        Assert.Equal(Start, store.Get(id)!.LinksFetched);
     }
 
     [Fact]
-    public void Rescanning_an_item_drops_its_direct_links_when_the_watch_page_changed()
+    public void Rescanning_an_item_drops_its_stream_links_when_the_watch_page_changed()
     {
         var id = Guid.NewGuid();
         var store = new StateStore(StatePath, _clock);
         store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=PL" });
-        store.RecordProviderUrls(id, new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+        store.RecordStreamLinks(id, [new StreamLink(8, "Netflix", "https://click.example/netflix")]);
 
         store.Record(new ItemState(id, 1, "US", [8], ItemStatus.Resolved, null) { Link = "https://tmdb.test/watch?locale=US" });
 
-        Assert.Null(store.Get(id)!.ProviderUrls);
-        Assert.Null(store.Get(id)!.UrlsChecked);
+        Assert.Null(store.Get(id)!.StreamLinks);
+        Assert.Null(store.Get(id)!.LinksFetched);
     }
 
     [Fact]
-    public void Direct_links_for_an_unknown_item_are_ignored()
+    public void Stream_links_for_an_unknown_item_are_ignored()
     {
         var store = new StateStore(StatePath, _clock);
 
-        store.RecordProviderUrls(Guid.NewGuid(), new Dictionary<int, string> { [8] = "https://click.example/netflix" });
+        store.RecordStreamLinks(Guid.NewGuid(), [new StreamLink(8, "Netflix", "https://click.example/netflix")]);
 
         Assert.Equal(0, store.Count);
     }
 
     [Fact]
-    public void Direct_links_are_due_when_never_checked_and_again_after_the_interval()
+    public void State_saved_with_the_earlier_link_format_loads_without_links_and_is_due_for_a_fetch()
+    {
+        // Version 1.2.0 stored links by id only, under different names; they cannot be matched by name, so they are fetched again.
+        File.WriteAllText(
+            StatePath,
+            "{\"Items\":[{\"ItemId\":\"" + Guid.Empty + "\",\"TmdbId\":1,\"Country\":\"PL\",\"ProviderIds\":[337],\"Status\":\"Resolved\",\"Error\":null,\"LastChecked\":\"2026-10-27T03:00:00+00:00\",\"RunId\":null,\"Link\":\"https://tmdb.test/x\",\"ProviderUrls\":{\"337\":\"https://old\"},\"UrlsChecked\":\"2026-10-27T03:00:00+00:00\"}]}");
+
+        var loaded = new StateStore(StatePath, _clock).Get(Guid.Empty)!;
+
+        Assert.Null(loaded.StreamLinks);
+        Assert.True(loaded.LinksDue(Start, TimeSpan.FromDays(7), TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public void Stream_links_are_due_when_never_fetched_and_again_after_the_interval()
     {
         var ttl = TimeSpan.FromDays(7);
         var retry = TimeSpan.FromHours(1);
         var never = new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null);
-        var fetched = never with { ProviderUrls = new Dictionary<int, string> { [8] = "https://x.test" }, UrlsChecked = Start };
+        var fetched = never with { StreamLinks = [new StreamLink(8, "Netflix", "https://x.test")], LinksFetched = Start };
 
         Assert.True(never.LinksDue(Start, ttl, retry));
         Assert.False(fetched.LinksDue(Start.AddDays(6), ttl, retry));
@@ -348,7 +363,7 @@ public sealed class StateStoreTests : IDisposable
     {
         var ttl = TimeSpan.FromDays(7);
         var retry = TimeSpan.FromHours(1);
-        var nothing = new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null) { ProviderUrls = new Dictionary<int, string>(), UrlsChecked = Start };
+        var nothing = new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null) { StreamLinks = [], LinksFetched = Start };
 
         Assert.False(nothing.LinksDue(Start.AddMinutes(30), ttl, retry));
         Assert.True(nothing.LinksDue(Start.AddMinutes(90), ttl, retry));

@@ -17,16 +17,19 @@ public static partial class WatchPageParser
     /// Finds the subscription ("Stream") link of each provider on the page.
     /// </summary>
     /// <param name="html">HTML of a TMDB watch page.</param>
-    /// <returns>TMDB provider id mapped to its link; the first link wins when a provider is listed twice (HD and SD).</returns>
-    public static IReadOnlyDictionary<int, string> StreamLinks(string html)
+    /// <returns>The links, in page order; the first link wins when a provider is listed twice (HD and SD).</returns>
+    public static IReadOnlyList<StreamLink> StreamLinks(string html)
     {
-        var links = new Dictionary<int, string>();
+        var links = new List<StreamLink>();
         foreach (Match match in AnchorHref().Matches(html))
         {
             var url = WebUtility.HtmlDecode(match.Groups["href"].Value);
-            if (url.StartsWith(LinkPrefix, StringComparison.Ordinal) && TryReadClickout(url, out var providerId, out var monetization) && monetization == "flatrate")
+            if (url.StartsWith(LinkPrefix, StringComparison.Ordinal)
+                && TryReadClickout(url, out var providerId, out var name, out var monetization)
+                && monetization == "flatrate"
+                && !links.Exists(l => l.ProviderId == providerId))
             {
-                links.TryAdd(providerId, url);
+                links.Add(new StreamLink(providerId, name, url));
             }
         }
 
@@ -34,9 +37,10 @@ public static partial class WatchPageParser
     }
 
     // The cx parameter is base64url JSON; its first entry describes the provider and how it is offered.
-    private static bool TryReadClickout(string url, out int providerId, out string monetization)
+    private static bool TryReadClickout(string url, out int providerId, out string name, out string monetization)
     {
         providerId = 0;
+        name = string.Empty;
         monetization = string.Empty;
         var cx = QueryValue(url, "cx");
         if (cx is null)
@@ -53,6 +57,7 @@ public static partial class WatchPageParser
             {
                 if (entry.TryGetProperty("data", out var data) && data.TryGetProperty("providerId", out var id) && id.TryGetInt32(out providerId))
                 {
+                    name = data.TryGetProperty("provider", out var provider) ? provider.GetString() ?? string.Empty : string.Empty;
                     monetization = data.TryGetProperty("monetizationType", out var type) ? type.GetString() ?? string.Empty : string.Empty;
                     return true;
                 }

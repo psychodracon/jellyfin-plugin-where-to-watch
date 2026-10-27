@@ -1,6 +1,7 @@
 using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.State;
+using Jellyfin.Plugin.WhereToWatch.Tmdb;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -75,10 +76,11 @@ public sealed class WatchOnController : ControllerBase
             : null;
 
         var providers = state.ProviderIds
-            .Select((id, index) => new WatchOnProvider(
-                id,
-                index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty,
-                direct is not null && direct.TryGetValue(id, out var url) ? url : null))
+            .Select((id, index) =>
+            {
+                var name = index < state.ProviderNames.Count ? state.ProviderNames[index] : string.Empty;
+                return new WatchOnProvider(id, name, direct is null ? null : StreamLinkMatcher.Find(direct, id, name));
+            })
             .ToList();
         return new WatchOnResponse(state.Country, state.Link, providers);
     }

@@ -13,7 +13,7 @@ Your stored posters are never modified. Badges are drawn as posters are served, 
 ## Install
 
 1. Build the plugin (see [Build](#build)) or take `Jellyfin.Plugin.WhereToWatch.dll` from a build.
-2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.2.1.0`).
+2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.2.2.0`).
 3. **Delete any older `Where to Watch_*` folder.** If two exist, Jellyfin loads the highest version.
 4. **Restart Jellyfin.** Plugins are only loaded at startup.
 5. Check **Dashboard → Plugins**: "Where to Watch" should be listed with the version you installed.
@@ -147,6 +147,9 @@ Open `https://<your-server>/WhereToWatch/logo/<providerId>` directly. If a rever
 
 **Direct links keep falling back to the TMDB page.**
 Look in Jellyfin's log for `TMDB watch page request returned <status>`: TMDB refused the request. Otherwise TMDB may have changed its page.
+
+**One provider falls back to the TMDB page while the others link directly.**
+The plugin matches TMDB's provider to the page's link by id, then by name ("Disney+" and "Disney Plus" count as the same), because the page does not always use TMDB's ids (Disney+ in Poland does not). If a service still falls back, its name differs on the two sides; please report it.
 
 **Behind a reverse proxy.** The plugin deliberately uses no separate `.js` file and no file extensions in its URLs, because some proxies block or reroute those.
 

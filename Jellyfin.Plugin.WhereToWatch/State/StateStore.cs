@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Jellyfin.Plugin.WhereToWatch.Tmdb;
 
 namespace Jellyfin.Plugin.WhereToWatch.State;
 
@@ -139,9 +140,9 @@ public sealed class StateStore
         lock (_gate)
         {
             // Direct links belong to one watch page; keep them across a rescan only while the page is the same.
-            if (state.ProviderUrls is null && _items.TryGetValue(state.ItemId, out var previous) && previous.Link is not null && previous.Link == state.Link)
+            if (state.StreamLinks is null && _items.TryGetValue(state.ItemId, out var previous) && previous.Link is not null && previous.Link == state.Link)
             {
-                state = state with { ProviderUrls = previous.ProviderUrls, UrlsChecked = previous.UrlsChecked };
+                state = state with { StreamLinks = previous.StreamLinks, LinksFetched = previous.LinksFetched };
             }
 
             _items[state.ItemId] = state with { LastChecked = _clock.GetUtcNow(), RunId = _run?.Id };
@@ -149,17 +150,17 @@ public sealed class StateStore
     }
 
     /// <summary>
-    /// Stores the direct provider links fetched for an item.
+    /// Stores the stream links fetched for an item.
     /// </summary>
     /// <param name="itemId">Jellyfin item id.</param>
-    /// <param name="urls">Links by TMDB provider id; empty when none were found.</param>
-    public void RecordProviderUrls(Guid itemId, IReadOnlyDictionary<int, string> urls)
+    /// <param name="links">The links; empty when none were found.</param>
+    public void RecordStreamLinks(Guid itemId, IReadOnlyList<StreamLink> links)
     {
         lock (_gate)
         {
             if (_items.TryGetValue(itemId, out var state))
             {
-                _items[itemId] = state with { ProviderUrls = urls, UrlsChecked = _clock.GetUtcNow() };
+                _items[itemId] = state with { StreamLinks = links, LinksFetched = _clock.GetUtcNow() };
             }
         }
     }

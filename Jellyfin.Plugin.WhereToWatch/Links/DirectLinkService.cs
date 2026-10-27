@@ -35,8 +35,8 @@ public sealed class DirectLinkService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="pause">How long to wait after a fetch before the next one may start; used by the scan to spread requests out.</param>
     /// <param name="force">Fetch even when the stored links are still valid.</param>
-    /// <returns>Links by TMDB provider id; null when there is nothing to base them on.</returns>
-    public async Task<IReadOnlyDictionary<int, string>?> GetAsync(Guid itemId, TimeSpan ttl, CancellationToken cancellationToken, TimeSpan pause = default, bool force = false)
+    /// <returns>The links; null when there is nothing to base them on.</returns>
+    public async Task<IReadOnlyList<StreamLink>?> GetAsync(Guid itemId, TimeSpan ttl, CancellationToken cancellationToken, TimeSpan pause = default, bool force = false)
     {
         var state = _state.Get(itemId);
         if (state?.Link is null)
@@ -46,7 +46,7 @@ public sealed class DirectLinkService
 
         if (!force && !state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
         {
-            return state.ProviderUrls;
+            return state.StreamLinks;
         }
 
         await _one.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -61,12 +61,12 @@ public sealed class DirectLinkService
 
             if (!force && !state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
             {
-                return state.ProviderUrls;
+                return state.StreamLinks;
             }
 
             var html = await _tmdb.GetWatchPageAsync(state.Link, cancellationToken).ConfigureAwait(false);
-            var links = html is null ? new Dictionary<int, string>() : WatchPageParser.StreamLinks(html);
-            _state.RecordProviderUrls(itemId, links);
+            IReadOnlyList<StreamLink> links = html is null ? [] : WatchPageParser.StreamLinks(html);
+            _state.RecordStreamLinks(itemId, links);
             _state.Save();
 
             if (pause > TimeSpan.Zero)

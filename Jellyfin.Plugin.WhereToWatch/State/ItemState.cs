@@ -1,3 +1,5 @@
+using Jellyfin.Plugin.WhereToWatch.Tmdb;
+
 namespace Jellyfin.Plugin.WhereToWatch.State;
 
 /// <summary>
@@ -56,14 +58,14 @@ public sealed record ItemState(
     public IReadOnlyList<string> ProviderNames { get; init; } = [];
 
     /// <summary>
-    /// Gets the direct link of each provider (by TMDB provider id), read from TMDB's watch page on demand. Null until fetched.
+    /// Gets the subscription links read from TMDB's watch page on demand, with the page's provider names. Null until fetched.
     /// </summary>
-    public IReadOnlyDictionary<int, string>? ProviderUrls { get; init; }
+    public IReadOnlyList<StreamLink>? StreamLinks { get; init; }
 
     /// <summary>
-    /// Gets when <see cref="ProviderUrls"/> were last fetched, successfully or not.
+    /// Gets when <see cref="StreamLinks"/> were last fetched, successfully or not.
     /// </summary>
-    public DateTimeOffset? UrlsChecked { get; init; }
+    public DateTimeOffset? LinksFetched { get; init; }
 
     /// <summary>
     /// Decides whether the direct links should be fetched again.
@@ -74,12 +76,12 @@ public sealed record ItemState(
     /// <returns>True when they were never fetched, or are older than <paramref name="ttl"/> (or <paramref name="retryAfter"/> when empty).</returns>
     public bool LinksDue(DateTimeOffset now, TimeSpan ttl, TimeSpan retryAfter)
     {
-        if (UrlsChecked is null)
+        if (LinksFetched is null)
         {
             return true;
         }
 
-        var wait = ProviderUrls is { Count: > 0 } ? ttl : retryAfter;
-        return now - UrlsChecked.Value > wait;
+        var wait = StreamLinks is { Count: > 0 } ? ttl : retryAfter;
+        return now - LinksFetched.Value > wait;
     }
 }
