@@ -109,6 +109,41 @@ public sealed class StateStoreTests : IDisposable
         Assert.Equal(2, new StateStore(StatePath, _clock).Count);
     }
 
+    [Fact]
+    public void Summary_counts_items_by_status_and_reports_the_run()
+    {
+        var store = new StateStore(StatePath, _clock);
+        var runId = store.StartRun(force: false);
+        store.Record(new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null));
+        store.Record(new ItemState(Guid.NewGuid(), 2, "PL", [8], ItemStatus.Resolved, null));
+        store.Record(new ItemState(Guid.NewGuid(), 3, null, [], ItemStatus.Failed, "HTTP 500"));
+
+        var summary = store.Summary();
+
+        Assert.Equal(3, summary.Total);
+        Assert.Equal(2, summary.ByStatus[ItemStatus.Resolved]);
+        Assert.Equal(1, summary.ByStatus[ItemStatus.Failed]);
+        Assert.Equal(runId, summary.RunId);
+        Assert.False(summary.RunCompleted);
+        Assert.Equal(Start, summary.LastChecked);
+
+        store.CompleteRun();
+        Assert.True(store.Summary().RunCompleted);
+    }
+
+    [Fact]
+    public void Forced_request_does_not_resume_an_unfinished_unforced_run()
+    {
+        var store = new StateStore(StatePath, _clock);
+        var unforced = store.StartRun(force: false);
+        store.Save();
+
+        var reloaded = new StateStore(StatePath, _clock);
+        var forced = reloaded.StartRun(force: true);
+
+        Assert.NotEqual(unforced, forced);
+    }
+
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;
