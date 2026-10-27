@@ -84,6 +84,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public double CornerRadiusPercent { get; set; } = 25;
 
     /// <summary>
+    /// Gets or sets the space between the backdrop edge and the logo, as a percentage of the badge height.
+    /// </summary>
+    public double PaddingPercent { get; set; } = 4;
+
+    /// <summary>
     /// Gets or sets the JPEG quality of rendered posters.
     /// </summary>
     public int JpegQuality { get; set; } = 90;
@@ -102,7 +107,8 @@ public class PluginConfiguration : BasePluginConfiguration
         new LayoutSettings(Corner, WidthPercent, AspectRatio, MarginPercent, SpacingPercent),
         BackdropColor,
         CornerRadiusPercent,
-        Math.Clamp(JpegQuality, 1, 100));
+        Math.Clamp(JpegQuality, 1, 100),
+        PaddingPercent);
 
     /// <summary>
     /// Picks the providers whose badges are drawn for an item.

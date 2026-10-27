@@ -47,6 +47,7 @@
           <div class="inputContainer"><input is="emby-input" type="number" step="0.1" id="SpacingPercent" label="Gap between badges (% of poster width)" /></div>
           <div class="inputContainer"><input is="emby-input" type="text" id="BackdropColor" label="Backdrop colour (#AARRGGBB)" /></div>
           <div class="inputContainer"><input is="emby-input" type="number" step="1" id="CornerRadiusPercent" label="Corner radius (% of badge height)" /></div>
+          <div class="inputContainer"><input is="emby-input" type="number" step="0.5" min="0" max="40" id="PaddingPercent" label="Space around the logo (% of badge height)" /></div>
           <div class="inputContainer"><input is="emby-input" type="number" min="1" max="100" id="JpegQuality" label="JPEG quality" /></div>
 
           <div class="fieldDescription">
@@ -64,7 +65,7 @@
         var pluginId = '3b675640-68ab-443a-adf8-55560d06ea1b';
         var page = document.querySelector('#WhereToWatchConfigPage');
         var textFields = ['TmdbApiKey', 'BackdropColor'];
-        var numberFields = ['TtlDays', 'MaxBadges', 'WidthPercent', 'AspectRatio', 'MarginPercent', 'SpacingPercent', 'CornerRadiusPercent', 'JpegQuality'];
+        var numberFields = ['TtlDays', 'MaxBadges', 'WidthPercent', 'AspectRatio', 'MarginPercent', 'SpacingPercent', 'CornerRadiusPercent', 'PaddingPercent', 'JpegQuality'];
         var checkFields = ['TagsEnabled', 'BadgesEnabled'];
         var selectedIds = [];
         var providers = [];

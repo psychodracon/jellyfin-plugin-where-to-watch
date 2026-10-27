@@ -45,6 +45,20 @@ public class BadgeRendererTests
         Assert.True(besideLogo.Red < 80, $"logo stretched over the whole badge: {besideLogo}");
     }
 
+    [Fact]
+    public void Padding_setting_controls_how_much_backdrop_surrounds_the_logo()
+    {
+        var poster = Png(200, 300, new SKColor(128, 128, 128));
+        var squareLogo = Png(40, 40, SKColors.Red);
+
+        // Badge is (10,250) 80x40. Pixel (50,253) is 3px below the badge top, inside the logo only when there is no padding.
+        using var tight = SKBitmap.Decode(BadgeRenderer.Render(poster, [squareLogo], Settings with { PaddingPercent = 0 }));
+        using var loose = SKBitmap.Decode(BadgeRenderer.Render(poster, [squareLogo], Settings with { PaddingPercent = 25 }));
+
+        Assert.True(tight.GetPixel(50, 253).Red > 200, $"expected logo up to the edge, got {tight.GetPixel(50, 253)}");
+        Assert.True(loose.GetPixel(50, 253).Red < 120, $"expected backdrop around the logo, got {loose.GetPixel(50, 253)}");
+    }
+
     private static byte[] Png(int width, int height, SKColor color)
     {
         using var bitmap = new SKBitmap(width, height);

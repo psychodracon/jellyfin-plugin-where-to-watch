@@ -9,11 +9,13 @@ namespace Jellyfin.Plugin.WhereToWatch.Rendering;
 /// <param name="BackdropColor">Backdrop colour as #AARRGGBB or #RRGGBB.</param>
 /// <param name="CornerRadiusPercent">Backdrop corner radius as a percentage of the badge height.</param>
 /// <param name="JpegQuality">JPEG quality, 1-100.</param>
+/// <param name="PaddingPercent">Space between the backdrop edge and the logo, as a percentage of the badge height.</param>
 public sealed record RenderSettings(
     LayoutSettings Layout,
     string BackdropColor,
     double CornerRadiusPercent,
-    int JpegQuality);
+    int JpegQuality,
+    double PaddingPercent = 10);
 
 /// <summary>
 /// Draws provider badges onto a poster.
@@ -47,7 +49,7 @@ public static class BadgeRenderer
             using var logo = SKBitmap.Decode(logos[i]);
             if (logo is not null)
             {
-                canvas.DrawBitmap(logo, FitInside(badge, logo.Width, logo.Height), logoPaint);
+                canvas.DrawBitmap(logo, FitInside(badge, logo.Width, logo.Height, settings.PaddingPercent), logoPaint);
             }
         }
 
@@ -55,9 +57,9 @@ public static class BadgeRenderer
         return image.Encode(SKEncodedImageFormat.Jpeg, settings.JpegQuality).ToArray();
     }
 
-    private static SKRect FitInside(SKRect badge, int logoWidth, int logoHeight)
+    private static SKRect FitInside(SKRect badge, int logoWidth, int logoHeight, double paddingPercent)
     {
-        var padding = badge.Height * 0.1f;
+        var padding = (float)(badge.Height * Math.Clamp(paddingPercent, 0, 40) / 100);
         var area = SKRect.Inflate(badge, -padding, -padding);
         var scale = Math.Min(area.Width / logoWidth, area.Height / logoHeight);
         var width = logoWidth * scale;
