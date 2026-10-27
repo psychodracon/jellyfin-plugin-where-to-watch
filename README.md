@@ -1,79 +1,179 @@
 # Where to Watch
 
-A Jellyfin 12 plugin that finds which streaming services carry your Movies and Series (via TMDB), tags them, and draws provider badges on posters, Kometa-style. Stored images are never modified: badges are drawn as posters are served.
+A Jellyfin plugin that shows **where your movies and series are streaming**. It looks up the streaming services for each title on TMDB, then:
+
+- **tags** the item (`stream:Netflix`), so you can filter your library by service,
+- **draws the service logo on the poster** (up to three, bottom-left by default),
+- adds a **"Watch on"** row to the details page in the web UI.
+
+Your stored posters are never modified. Badges are drawn as posters are served, so turning the plugin off brings the originals straight back.
+
+> Requires **Jellyfin 12** and a free **TMDB API key**. Tested with the web UI. Tags are ordinary Jellyfin tags, and badges are drawn on the poster images the server sends, so other clients should show them too, but I have not tested that.
+
+## Install
+
+1. Build the plugin (see [Build](#build)) or take `Jellyfin.Plugin.WhereToWatch.dll` from a build.
+2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.2.1.0`).
+3. **Delete any older `Where to Watch_*` folder.** If two exist, Jellyfin loads the highest version.
+4. **Restart Jellyfin.** Plugins are only loaded at startup.
+5. Check **Dashboard → Plugins**: "Where to Watch" should be listed with the version you installed.
+
+## First-time setup
+
+1. **Dashboard → Plugins → Where to Watch.**
+2. Paste your **TMDB API key** (a v3 key or a v4 read access token) and save.
+3. Set your **countries**, primary first, for example `PL,US`. The first country in which one of your selected providers has the title is used.
+4. Reload the page and click **Load providers from TMDB**. Tick the services you subscribe to. The order of the ticked ones is the badge priority (default: TMDB's own popularity order); use the arrows to change it. Save.
+5. **Dashboard → Scheduled Tasks → Where to Watch: scan providers → run.** The first scan queries TMDB for every movie and series, so give it time. It can be stopped and resumes where it left off.
+6. Open the library, with your browser cache disabled for the first look (see [Troubleshooting](#troubleshooting)).
+
+Only items with a TMDB id are looked up, and only **subscription ("flatrate")** availability counts. Rent and buy offers are ignored.
 
 ## What it does
 
-- **Tags** items with `stream:<provider>` (for example `stream:Netflix`) on Movies, Series and their Episodes (episodes carry their series' tags). Only `stream:*` tags are ever added or removed.
-- **Badges** up to N provider logos stacked on the Primary poster of Movies and Series. Position, size, margin, spacing, backdrop colour, backdrop and logo corner radius, space around the logo, output format and quality are configurable. The defaults give a rounded dark tile around each logo, bottom-left.
-- Uses **flatrate** (subscription) availability only, with an **ordered country fallback** (for example `PL`, then `US`): the first country where a selected provider has the title is used.
-- **State and resume:** per-item results are stored in `<plugin data>/state.json`, written atomically and checkpointed during a run. An interrupted run resumes where it stopped. Items are re-checked after a configurable number of days; failed lookups are retried on the next run; changing the countries or selected providers triggers a full re-check.
+### Tags
 
-## How badges are drawn
+Items on a selected service get a tag `stream:<name>`, for example `stream:Netflix`. Movies and series are tagged, and episodes carry their series' tags. Only `stream:*` tags are ever added or removed; your own tags are never touched. A tag is removed again when the title leaves that service.
 
-A small middleware intercepts `Items/{id}/Images/Primary` requests for items that have providers in the state, draws the badges on the poster Jellyfin would have served, and caches the result under Jellyfin's cache folder. Disabling the plugin or the badges brings the original posters straight back.
+### Poster badges
 
-**Where badges go.** Poster cards are a fixed 2:3 box. The web client scales each poster to cover that box and centres it, so a poster of any other shape is cropped at the sides (or at the top and bottom). Badges are therefore placed, sized and inset by the margin relative to the centred 2:3 part of the poster that is actually visible. Otherwise the margin on the cropped sides would disappear. (The `fillWidth`/`fillHeight` in an image request is the poster's own shape, not the card's, so it is not used.)
+A dark, rounded tile with the service logo is drawn on the **Primary** image (the poster) of movies and series, stacked up from the corner you choose, in your provider priority order, up to the maximum you set (default 3).
 
-**Poster format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP), so every client keeps getting a format it already accepts. JPEG is encoded without chroma subsampling (4:4:4) at quality 95 by default. Because the poster is decoded and encoded again, JPEG is never perfectly lossless; for the least loss pick `Png` (lossless but large) or `Webp` with quality 100 (lossless), provided your clients accept WebP.
+- **Placement.** The web client shows every poster in a fixed 2:3 card, centred and cropped. Badges are placed relative to that visible area, so the margin is the same on every poster even when its shape differs.
+- **Format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP). You can force JPEG, WebP or PNG. Re-encoding always costs some quality: choose PNG, or WebP at quality 100 (lossless), for none at the price of bigger files and a slower first render.
+- **Caching.** Rendered posters are cached in Jellyfin's cache folder (`wheretowatch`) and pruned to 512 MB after each scan. Changing any badge setting re-renders them automatically.
 
-Logo lookup order per provider id:
+### "Watch on" row (web UI only)
 
-1. `<plugin data>/logos/<providerId>.png` (also `.webp`, `.jpg`, `.jpeg`)
-2. the TMDB icon, downloaded to `<plugin data>/logos/cache/`
+On a movie or series details page, a **Watch on** row (Polish UI: **Oglądaj na**) appears under the overview, with the logos of the services the title is on. It follows Jellyfin's display language (Polish, otherwise English) and carries a small **JustWatch** credit, which TMDB requires for this data.
 
-Provider ids are shown next to each provider on the configuration page.
+- By default every logo opens the **TMDB watch page** for that title and country. That is the only link TMDB's API offers.
+- **Optional direct links** (off by default): see [Direct provider links](#direct-provider-links-optional).
+- The plugin adds a small script to Jellyfin's `index.html` as it is served (nothing on disk changes). It only affects the web UI, not the phone, TV or other apps. Turn the row off with **Show a "Watch on" row** on the config page.
 
-## "Watch on" row (web UI)
+#### Direct provider links (optional)
 
-On a movie or series details page of the **web UI** (not the phone, TV or other apps), a **Watch on** row (Polish UI: **Oglądaj na**) is added under the overview. It shows the logos of the providers you selected, from the first country in your list that has data, with a small JustWatch credit (TMDB requires crediting JustWatch for this data).
+TMDB's API has no per-provider links, but its public watch page does (each logo there goes straight to the title at that service). With **Link each "Watch on" logo straight to the provider** enabled, the plugin reads those links from TMDB's page.
 
-- **Links.** By default every logo opens the TMDB watch page for the title and country, which is the one link TMDB's API provides (it has no per-provider links). **Optional, off by default:** "Link each logo straight to the provider" reads TMDB's public watch page and uses the per-provider links found there (subscription providers only). The daily scan fetches the page for each item that is on one of your selected providers, with a pause between requests, and opening a details page fetches any that are still missing. Links are kept for the refresh interval (a hard refresh refetches them); a failed or empty result is retried after an hour. It is polite (one request at a time, identifies itself in the User-Agent) and falls back to the TMDB page link on any failure. Be aware that TMDB's terms restrict automated reading of its site, TMDB could block your server, and it depends on TMDB's page markup staying the same.
+- The scan fetches the page once per item that is on one of your selected services, one request at a time with a pause between them, and keeps every stream provider's link from it. Opening a details page fetches any that are still missing.
+- Links are refreshed with the rest of the provider data (default every 7 days). A hard refresh refetches them. A failed or empty result is retried after an hour.
+- Any failure falls back to the TMDB page link.
+- **Know what you are enabling.** This reads a website rather than an API. TMDB's terms restrict automated reading of its site (there is a carve-out for personal, non-commercial use that I would not rely on), TMDB could throttle or block your server's IP, and it stops working if TMDB changes that page. The links go through `click.justwatch.com`, as they do on TMDB's own site. It is **off by default** for these reasons.
 
-- **How it gets into the page.** The plugin adds the script, inline, to Jellyfin's `index.html` as it is served; nothing on disk is modified. It is inline rather than a separate `.js` URL because a reverse proxy in front of Jellyfin can block unfamiliar script requests. Turn the row off with "Show a Watch on row" on the config page.
+## Settings
 
-- **Existing scans.** The first scan after installing this version refreshes every item once, because the link and provider names are new in the state.
+All on **Dashboard → Plugins → Where to Watch**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| TMDB API key | | Your v3 key or v4 token. Kept on the server; the API shows it masked. |
+| Countries | `PL,US` | Primary first. The first country where a selected service has the title wins. |
+| Days before an item is checked again | 7 | Refresh interval for provider data and direct links. |
+| Add `stream:` tags | on | Tagging. |
+| Draw badges on posters | on | Poster badges. |
+| Show a "Watch on" row | on | The details-page row. |
+| Direct links | off | See above. |
+| Maximum badges per poster | 3 | |
+| Corner | Bottom left | Where the first badge goes; more stack away from the edge. |
+| Badge width | 25 | % of the visible poster width. |
+| Badge width / height | 1 | 1 is square, suited to TMDB's square icons. |
+| Margin | 2 | % of the visible poster width, from the card edges. |
+| Gap between badges | 2 | % of the visible poster width. |
+| Backdrop colour | `#99000000` | `#AARRGGBB` (here 60% black). |
+| Backdrop corner radius | 8 | % of the badge height. |
+| Space around the logo | 1 | % of the badge height. |
+| Logo corner radius | 8 | % of the logo size; 50 makes a circle. |
+| Poster format | Auto | Auto, JPEG, WebP or PNG. |
+| Quality | 95 | JPEG and lossy WebP quality; 100 makes WebP lossless. |
+
+Changing a badge setting needs no rescan. Changing the countries or selected providers triggers a full re-check on the next scan.
+
+## Custom logos
+
+The badge and row use TMDB's provider icons, downloaded automatically (the first scan fetches them). To use your own artwork, put a file named after the **TMDB provider id** in the plugin's `logos` folder:
+
+```
+<plugin data folder>/logos/8.png        (Netflix)
+<plugin data folder>/logos/1899.webp    (HBO Max)
+```
+
+`.png`, `.webp`, `.jpg` and `.jpeg` are accepted, and your file always wins over the downloaded icon. Provider ids are shown next to each provider on the config page. The downloaded icons live in `logos/cache/`. A larger, bold, square or rounded image works best. If you cannot find the plugin's data folder, search your Jellyfin data directory for the `state.json` file or the `logos` folder created by the first scan.
 
 ## Scheduled tasks
 
 | Task | Runs | What it does |
 | --- | --- | --- |
-| Where to Watch: scan providers | daily 03:00 | Checks new items and items past the refresh interval; applies tags. Resumes after an interruption. |
+| Where to Watch: scan providers | daily at 03:00 | Looks up new items and items past the refresh interval, tags them, and (if enabled) fetches direct links. Resumes after an interruption. |
 | Where to Watch: hard refresh | manual | Clears rendered posters and re-checks every item, ignoring the refresh interval. Does not remove tags. |
-| Where to Watch: remove all stream: tags | manual | Removes every `stream:` tag and marks all items due, so the next scan tags them again. |
+| Where to Watch: remove all stream: tags | manual | Removes every `stream:` tag and marks all items due, so the next scan tags them again. Use before uninstalling. |
 
-Rendered posters are cached under Jellyfin's cache folder and pruned to 512 MB after each scan.
+Progress is stored in `state.json` in the plugin's data folder (written atomically and checkpointed every ~30 s or 200 items). Failed lookups are retried on the next run.
 
-Settings that change tags (for example turning tags on later) take effect at the next check of an item; run the hard refresh to apply them immediately.
+## API
 
-## API (admin only, `/WhereToWatch/...`)
+All under `/WhereToWatch/`. The first group is **admin only**.
 
-- `GET config` effective settings, TMDB key redacted
-- `GET tmdb/providers` flatrate providers TMDB lists for the primary country (optional `?country=`)
-- `GET items/{id}` how one item was resolved: stream tags, recorded state, chosen badges, and what TMDB reports right now for each configured country
-- `GET state` counts by status, latest run and its progress
+| Endpoint | Returns |
+| --- | --- |
+| `GET config` | Effective settings, TMDB key masked. |
+| `GET tmdb/providers` | The subscription services TMDB lists for your primary country (optional `?country=`). Used by the config page. |
+| `GET items/{id}` | How one item was resolved: stream tags, stored state, chosen badges, and what TMDB reports right now for each configured country. |
+| `GET state` | Counts by status, the latest run and its progress. |
 
 Used by the "Watch on" row:
-- `GET watch/{itemId}` the providers to show for an item (needs sign-in)
-- `GET logo/{providerId}` a provider logo (anonymous, as it is loaded through an image tag; the URL has no file extension on purpose)
+
+| Endpoint | Access | Returns |
+| --- | --- | --- |
+| `GET watch/{itemId}` | signed-in user | The services, country and link(s) to show for an item. |
+| `GET logo/{providerId}` | anonymous | A service logo. It is loaded through an image tag, which cannot send credentials. The URL has no file extension on purpose. |
+
+In the web UI console, `await ApiClient.getJSON(ApiClient.getUrl('WhereToWatch/state'))` shows scan progress using your signed-in session.
+
+## Troubleshooting
+
+**No badges, or the old posters still show.**
+Check, in order:
+1. Jellyfin was **restarted** after installing the DLL, and Dashboard → Plugins shows the version you expect.
+2. The **scan has run**: `WhereToWatch/state` should show items with status `Resolved`.
+3. Your browser is not showing a cached poster: reload with the cache disabled (DevTools → Network → "Disable cache"). Jellyfin gives posters a long cache lifetime.
+4. In DevTools → Network, open a poster request (`Images/Primary`) and look for the response header `X-WhereToWatch: <version>; card-aspect=0.667`. Missing means the plugin did not draw on that image.
+5. Jellyfin's log: a line `Where to Watch: no logo for provider …` means that service's logo is missing; run the scan (it downloads TMDB icons) or add your own file.
+
+**No "Watch on" row.**
+In the console run `document.querySelector('script[data-wheretowatch]')`. `null` means the script was not added to the page: the plugin is not loaded, the row is switched off, or something in front of Jellyfin (a proxy that caches `index.html`) is serving a stale copy. The row also needs the item to have been scanned.
+
+**The logos in the row are broken images.**
+Open `https://<your-server>/WhereToWatch/logo/<providerId>` directly. If a reverse proxy answers with its own error page, it is blocking anonymous requests to that path.
+
+**Direct links keep falling back to the TMDB page.**
+Look in Jellyfin's log for `TMDB watch page request returned <status>`: TMDB refused the request. Otherwise TMDB may have changed its page.
+
+**Behind a reverse proxy.** The plugin deliberately uses no separate `.js` file and no file extensions in its URLs, because some proxies block or reroute those.
+
+## Limitations
+
+- The "Watch on" row exists in the **web UI only**.
+- SVG logos are not supported (PNG, WebP and JPEG are).
+- Only **subscription** availability is shown, never rent or buy.
+- Availability comes from TMDB (powered by JustWatch) and can lag or be wrong.
+- Posters are placed for the web UI's 2:3 cards. Other clients may crop posters differently.
 
 ## Build
 
-Requires the .NET 10 SDK.
+Requires the **.NET 10 SDK**.
 
 ```
-dotnet build Jellyfin.Plugin.WhereToWatch
-dotnet test Jellyfin.Plugin.WhereToWatch.Tests
+dotnet build WhereToWatch.slnx
+dotnet test WhereToWatch.slnx
+dotnet publish Jellyfin.Plugin.WhereToWatch -c Release -o artifacts/publish
 ```
 
-Copy `Jellyfin.Plugin.WhereToWatch.dll` into `<jellyfin-data>/plugins/Where to Watch_<version>/` and restart Jellyfin.
+The result is `artifacts/publish/Jellyfin.Plugin.WhereToWatch.dll`. Jellyfin and SkiaSharp are supplied by the server and are not bundled.
 
-## Status
+The unit tests cover the logic that does not need a running server: country fallback, tag changes, badge layout and rendering, the state file, the HTML injection and the TMDB page parser. The poster badges have been checked on a running Jellyfin 12. The "Watch on" row and the direct links are tested at the logic level only and still need checking against your own server.
 
-The pure logic (country fallback, tag diff, badge layout and rendering, state store, provider links, page injection) is covered by tests. The poster badges have been verified on a running Jellyfin 12 server. The "Watch on" row (the `index.html` injection, the endpoints and the browser script) has not yet been verified on a running server.
+## Credits and license
 
-Not yet implemented: SVG logos and cache pre-warming in the daily task.
+Streaming availability data is provided by **TMDB**, powered by **JustWatch**. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-## License
-
-GPL-3.0, see `LICENSE`.
+GPL-3.0. See `LICENSE`.
