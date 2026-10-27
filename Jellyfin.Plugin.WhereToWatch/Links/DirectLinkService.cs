@@ -33,8 +33,10 @@ public sealed class DirectLinkService
     /// <param name="itemId">Jellyfin item id.</param>
     /// <param name="ttl">How long fetched links stay valid.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="pause">How long to wait after a fetch before the next one may start; used by the scan to spread requests out.</param>
+    /// <param name="force">Fetch even when the stored links are still valid.</param>
     /// <returns>Links by TMDB provider id; null when there is nothing to base them on.</returns>
-    public async Task<IReadOnlyDictionary<int, string>?> GetAsync(Guid itemId, TimeSpan ttl, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<int, string>?> GetAsync(Guid itemId, TimeSpan ttl, CancellationToken cancellationToken, TimeSpan pause = default, bool force = false)
     {
         var state = _state.Get(itemId);
         if (state?.Link is null)
@@ -42,7 +44,7 @@ public sealed class DirectLinkService
             return null;
         }
 
-        if (!state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
+        if (!force && !state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
         {
             return state.ProviderUrls;
         }
@@ -50,14 +52,14 @@ public sealed class DirectLinkService
         await _one.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Another request may have fetched them while this one waited.
+            // Another request may have fetched them while this one waited (unless this one is forced to refetch).
             state = _state.Get(itemId);
             if (state?.Link is null)
             {
                 return null;
             }
 
-            if (!state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
+            if (!force && !state.LinksDue(DateTimeOffset.UtcNow, ttl, RetryAfter))
             {
                 return state.ProviderUrls;
             }
@@ -66,6 +68,12 @@ public sealed class DirectLinkService
             var links = html is null ? new Dictionary<int, string>() : WatchPageParser.StreamLinks(html);
             _state.RecordProviderUrls(itemId, links);
             _state.Save();
+
+            if (pause > TimeSpan.Zero)
+            {
+                await Task.Delay(pause, cancellationToken).ConfigureAwait(false);
+            }
+
             return links;
         }
         finally

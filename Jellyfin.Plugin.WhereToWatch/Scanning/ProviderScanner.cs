@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.WhereToWatch.Configuration;
+using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.Rendering;
 using Jellyfin.Plugin.WhereToWatch.Resolution;
@@ -22,6 +23,7 @@ public sealed class ProviderScanner
 {
     private const int CheckpointItems = 200;
     private const long MaxCacheBytes = 512L * 1024 * 1024;
+    private static readonly TimeSpan DirectLinkPause = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromSeconds(30);
 
     private readonly ILibraryManager _libraryManager;
@@ -29,6 +31,7 @@ public sealed class ProviderScanner
     private readonly LogoStore _logos;
     private readonly StateStore _state;
     private readonly RenderCache _cache;
+    private readonly DirectLinkService _directLinks;
     private readonly ILogger<ProviderScanner> _logger;
     private readonly SemaphoreSlim _running = new(1, 1);
 
@@ -40,14 +43,16 @@ public sealed class ProviderScanner
     /// <param name="logos">Logo store.</param>
     /// <param name="state">State store.</param>
     /// <param name="cache">Render cache, pruned after each run.</param>
+    /// <param name="directLinks">Direct provider links, fetched during the scan when enabled.</param>
     /// <param name="logger">Logger.</param>
-    public ProviderScanner(ILibraryManager libraryManager, TmdbClient tmdb, LogoStore logos, StateStore state, RenderCache cache, ILogger<ProviderScanner> logger)
+    public ProviderScanner(ILibraryManager libraryManager, TmdbClient tmdb, LogoStore logos, StateStore state, RenderCache cache, DirectLinkService directLinks, ILogger<ProviderScanner> logger)
     {
         _libraryManager = libraryManager;
         _tmdb = tmdb;
         _logos = logos;
         _state = state;
         _cache = cache;
+        _directLinks = directLinks;
         _logger = logger;
     }
 
@@ -99,10 +104,14 @@ public sealed class ProviderScanner
                     new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken },
                     async (item, token) =>
                     {
-                        if (_state.NeedsRefresh(item.Id, ttl))
+                        var due = _state.NeedsRefresh(item.Id, ttl);
+                        if (due)
                         {
                             await ProcessAsync(item, config, token).ConfigureAwait(false);
                         }
+
+                        // Items skipped above can still be missing their direct links (for instance when the option was switched on later).
+                        await FetchDirectLinksAsync(item.Id, config, ttl, force && due, token).ConfigureAwait(false);
 
                         lock (gate)
                         {
@@ -144,6 +153,18 @@ public sealed class ProviderScanner
         {
             _logger.LogWarning(ex, "Where to Watch: could not refresh provider logos");
         }
+    }
+
+    private async Task FetchDirectLinksAsync(Guid itemId, PluginConfiguration config, TimeSpan ttl, bool force, CancellationToken cancellationToken)
+    {
+        var state = _state.Get(itemId);
+        if (!config.DirectLinksEnabled || state is null || state.ProviderIds.Count == 0 || state.Link is null)
+        {
+            return;
+        }
+
+        // Only items on a selected provider need a page, and the pause spreads those requests out.
+        await _directLinks.GetAsync(itemId, ttl, cancellationToken, DirectLinkPause, force).ConfigureAwait(false);
     }
 
     private async Task ProcessAsync(BaseItem item, PluginConfiguration config, CancellationToken cancellationToken)
