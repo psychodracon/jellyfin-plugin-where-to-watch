@@ -4,14 +4,14 @@ namespace Jellyfin.Plugin.WhereToWatch.Tests;
 
 public class HtmlInjectorTests
 {
-    private const string Script = "../WhereToWatch/watchon.js";
+    private const string Script = "console.log('hi');";
 
     [Fact]
-    public void Adds_the_script_tag_just_before_the_closing_body()
+    public void Adds_the_script_inline_just_before_the_closing_body()
     {
         var result = HtmlInjector.Inject("<html><body><div id=\"app\"></div></body></html>", Script);
 
-        Assert.Equal("<html><body><div id=\"app\"></div><script src=\"../WhereToWatch/watchon.js\" defer></script></body></html>", result);
+        Assert.Equal("<html><body><div id=\"app\"></div><script data-wheretowatch>console.log('hi');</script></body></html>", result);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class HtmlInjectorTests
     {
         var result = HtmlInjector.Inject("<HTML><BODY>x</BODY></HTML>", Script);
 
-        Assert.Contains("<script src=\"../WhereToWatch/watchon.js\" defer></script></BODY>", result, StringComparison.Ordinal);
+        Assert.Contains("<script data-wheretowatch>console.log('hi');</script></BODY>", result, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -44,7 +44,23 @@ public class HtmlInjectorTests
         // A literal "</body>" inside inline JavaScript must not be mistaken for the real end of the page.
         var result = HtmlInjector.Inject("<body><script>var s = '</body>';</script></body>", Script);
 
-        Assert.EndsWith("<script src=\"../WhereToWatch/watchon.js\" defer></script></body>", result, StringComparison.Ordinal);
-        Assert.Equal(1, result.Split("watchon.js").Length - 1);
+        Assert.EndsWith("<script data-wheretowatch>console.log('hi');</script></body>", result, StringComparison.Ordinal);
+        Assert.Equal(1, result.Split("data-wheretowatch").Length - 1);
+    }
+
+    [Fact]
+    public void A_closing_script_tag_inside_the_script_text_cannot_end_the_tag_early()
+    {
+        var result = HtmlInjector.Inject("<body></body>", "var s = '</script><b>x</b>';");
+
+        Assert.Equal("<body><script data-wheretowatch>var s = '<\\/script><b>x</b>';</script></body>", result);
+    }
+
+    [Fact]
+    public void The_escaped_closing_tag_is_matched_whatever_its_case()
+    {
+        var result = HtmlInjector.Inject("<body></body>", "var s = '</SCRIPT>';");
+
+        Assert.DoesNotContain("</SCRIPT>", result, StringComparison.Ordinal);
     }
 }

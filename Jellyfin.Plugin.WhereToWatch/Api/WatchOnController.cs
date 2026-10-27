@@ -1,4 +1,3 @@
-using System.Reflection;
 using Jellyfin.Plugin.WhereToWatch.Links;
 using Jellyfin.Plugin.WhereToWatch.Logos;
 using Jellyfin.Plugin.WhereToWatch.State;
@@ -26,14 +25,12 @@ public sealed record WatchOnProvider(int Id, string Name, string? Url);
 public sealed record WatchOnResponse(string? Country, string? Link, IReadOnlyList<WatchOnProvider> Providers);
 
 /// <summary>
-/// Endpoints used by the "Watch on" row of the web UI. Open to any signed-in user, unlike the admin endpoints.
+/// Endpoints used by the "Watch on" row of the web UI.
 /// </summary>
 [ApiController]
 [Route("WhereToWatch")]
 public sealed class WatchOnController : ControllerBase
 {
-    private const string ScriptResource = "Jellyfin.Plugin.WhereToWatch.Web.watchon.js";
-
     private readonly StateStore _state;
     private readonly ILibraryManager _libraryManager;
     private readonly LogoStore _logos;
@@ -79,6 +76,7 @@ public sealed class WatchOnController : ControllerBase
 
     /// <summary>
     /// Serves a provider logo. Anonymous, because the browser loads it through an img tag that cannot send credentials.
+    /// The URL deliberately has no file extension, like Jellyfin's own image URLs, so proxies treat it as an API call.
     /// </summary>
     /// <param name="providerId">TMDB provider id.</param>
     /// <returns>The logo image.</returns>
@@ -94,24 +92,6 @@ public sealed class WatchOnController : ControllerBase
 
         Response.Headers.CacheControl = "public, max-age=86400";
         return File(bytes, ContentTypeOf(bytes));
-    }
-
-    /// <summary>
-    /// Serves the script that adds the row to the details page.
-    /// </summary>
-    /// <returns>The JavaScript file.</returns>
-    [HttpGet("watchon.js")]
-    [AllowAnonymous]
-    public ActionResult GetScript()
-    {
-        var stream = typeof(WatchOnController).Assembly.GetManifestResourceStream(ScriptResource);
-        if (stream is null)
-        {
-            return NotFound();
-        }
-
-        Response.Headers.CacheControl = "public, max-age=3600";
-        return File(stream, "application/javascript");
     }
 
     private static string ContentTypeOf(byte[] image) => image switch

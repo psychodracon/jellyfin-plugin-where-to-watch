@@ -143,8 +143,14 @@ public sealed partial class BadgeMiddleware
             && (path.Equals("/web/", StringComparison.OrdinalIgnoreCase) || path.Equals("/web/index.html", StringComparison.OrdinalIgnoreCase));
     }
 
-    // Relative, so it keeps working when Jellyfin is served under a base URL; the version busts the browser cache on upgrades.
-    private static string ScriptUrl() => "../WhereToWatch/watchon.js?v=" + typeof(BadgeMiddleware).Assembly.GetName().Version;
+    // Inlined into the page rather than served from a URL: a separate .js request can be blocked by a reverse proxy in front of Jellyfin.
+    private static readonly Lazy<string> ScriptSource = new(() =>
+    {
+        using var stream = typeof(BadgeMiddleware).Assembly.GetManifestResourceStream("Jellyfin.Plugin.WhereToWatch.Web.watchon.js")
+            ?? throw new InvalidOperationException("The embedded watchon.js resource is missing.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    });
 
     private async Task AddScriptToWebIndexAsync(HttpContext context)
     {
@@ -191,7 +197,7 @@ public sealed partial class BadgeMiddleware
             return;
         }
 
-        var page = System.Text.Encoding.UTF8.GetBytes(HtmlInjector.Inject(System.Text.Encoding.UTF8.GetString(buffer.ToArray()), ScriptUrl()));
+        var page = System.Text.Encoding.UTF8.GetBytes(HtmlInjector.Inject(System.Text.Encoding.UTF8.GetString(buffer.ToArray()), ScriptSource.Value));
         context.Response.ContentLength = page.Length;
 
         // The page changed, so the original validators no longer describe it, and it must not outlive a plugin upgrade in a cache.
