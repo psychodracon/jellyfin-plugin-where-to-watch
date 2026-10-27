@@ -101,7 +101,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the quality of JPEG and lossy WebP output; 100 makes WebP lossless.
     /// </summary>
-    public int JpegQuality { get; set; } = 100;
+    public int JpegQuality { get; set; } = 95;
 
     /// <summary>
     /// Gets the primary country, the first in <see cref="Countries"/>.

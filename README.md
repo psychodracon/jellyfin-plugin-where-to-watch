@@ -15,7 +15,7 @@ A small middleware intercepts `Items/{id}/Images/Primary` requests for items tha
 
 **Where badges go.** Poster cards are a fixed 2:3 box. The web client scales each poster to cover that box and centres it, so a poster of any other shape is cropped at the sides (or at the top and bottom). Badges are therefore placed, sized and inset by the margin relative to the centred 2:3 part of the poster that is actually visible. Otherwise the margin on the cropped sides would disappear. (The `fillWidth`/`fillHeight` in an image request is the poster's own shape, not the card's, so it is not used.)
 
-**Poster format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP), so every client keeps getting a format it already accepts. JPEG is encoded without chroma subsampling (4:4:4) at quality 100 by default. Because the poster is decoded and encoded again, JPEG is never perfectly lossless; for the least loss pick `Png` (lossless but large) or `Webp` with quality 100 (lossless), provided your clients accept WebP.
+**Poster format.** By default (`Auto`) the badged poster keeps the format Jellyfin served for that request (JPEG, PNG or WebP), so every client keeps getting a format it already accepts. JPEG is encoded without chroma subsampling (4:4:4) at quality 95 by default. Because the poster is decoded and encoded again, JPEG is never perfectly lossless; for the least loss pick `Png` (lossless but large) or `Webp` with quality 100 (lossless), provided your clients accept WebP.
 
 Logo lookup order per provider id:
 
