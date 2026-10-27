@@ -39,4 +39,24 @@ public class TagDiffTests
         Assert.Empty(changes.ToAdd);
         Assert.Empty(changes.ToRemove);
     }
+
+    [Fact]
+    public void Apply_swaps_stale_stream_tags_for_new_ones_and_keeps_everything_else()
+    {
+        var changes = new TagChanges(["stream:HBO Max"], ["stream:Netflix"]);
+
+        var result = TagDiff.Apply(["Drama", "stream:Netflix", "provider:Netflix"], changes);
+
+        Assert.Equal(["Drama", "provider:Netflix", "stream:HBO Max"], result);
+    }
+
+    [Theory]
+    [InlineData("stream:Netflix", true)]
+    [InlineData("STREAM:netflix", true)]
+    [InlineData("provider:Netflix", false)]
+    [InlineData("streaming", false)]
+    public void Recognises_tags_it_manages_by_prefix(string tag, bool expected)
+    {
+        Assert.Equal(expected, TagDiff.IsManaged(tag));
+    }
 }

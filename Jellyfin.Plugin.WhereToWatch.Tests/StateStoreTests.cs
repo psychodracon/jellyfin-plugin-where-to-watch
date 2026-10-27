@@ -144,6 +144,80 @@ public sealed class StateStoreTests : IDisposable
         Assert.NotEqual(unforced, forced);
     }
 
+    [Fact]
+    public void Failed_item_is_retried_on_the_next_run_but_not_again_within_the_same_run()
+    {
+        var ttl = TimeSpan.FromDays(7);
+        var item = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.StartRun(force: false);
+        store.Record(new ItemState(item, 1, null, [], ItemStatus.Failed, "HTTP 429"));
+
+        Assert.False(store.NeedsRefresh(item, ttl));
+
+        store.CompleteRun();
+        store.StartRun(force: false);
+        Assert.True(store.NeedsRefresh(item, ttl));
+    }
+
+    [Fact]
+    public void Expire_makes_every_item_due_again_while_keeping_what_was_resolved()
+    {
+        var item = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(item, 1, "PL", [8], ItemStatus.Resolved, null));
+        Assert.False(store.NeedsRefresh(item, TimeSpan.FromDays(7)));
+
+        store.Expire();
+
+        Assert.True(store.NeedsRefresh(item, TimeSpan.FromDays(7)));
+        Assert.Equal([8], store.Get(item)!.ProviderIds);
+    }
+
+    [Fact]
+    public void Changed_settings_fingerprint_forces_a_full_recheck_once()
+    {
+        var ttl = TimeSpan.FromDays(7);
+        var item = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.StartRun(force: false, fingerprint: "PL|8");
+        store.Record(new ItemState(item, 1, "PL", [8], ItemStatus.Resolved, null));
+        store.CompleteRun();
+        store.Save();
+
+        var sameSettings = new StateStore(StatePath, _clock);
+        sameSettings.StartRun(force: false, fingerprint: "PL|8");
+        Assert.False(sameSettings.NeedsRefresh(item, ttl));
+        sameSettings.CompleteRun();
+        sameSettings.Save();
+
+        var changed = new StateStore(StatePath, _clock);
+        changed.StartRun(force: false, fingerprint: "PL|8,337");
+        Assert.True(changed.NeedsRefresh(item, ttl));
+        changed.Record(new ItemState(item, 1, "PL", [8, 337], ItemStatus.Resolved, null));
+        changed.CompleteRun();
+        changed.Save();
+
+        var settled = new StateStore(StatePath, _clock);
+        settled.StartRun(force: false, fingerprint: "PL|8,337");
+        Assert.False(settled.NeedsRefresh(item, ttl));
+    }
+
+    [Fact]
+    public void Summary_reports_run_progress()
+    {
+        var store = new StateStore(StatePath, _clock);
+        store.StartRun(force: false);
+        store.SetRunTotal(10);
+        store.Record(new ItemState(Guid.NewGuid(), 1, "PL", [8], ItemStatus.Resolved, null));
+        store.Record(new ItemState(Guid.NewGuid(), 2, "PL", [8], ItemStatus.Resolved, null));
+
+        var summary = store.Summary();
+
+        Assert.Equal(2, summary.RunHandled);
+        Assert.Equal(10, summary.RunTotal);
+    }
+
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

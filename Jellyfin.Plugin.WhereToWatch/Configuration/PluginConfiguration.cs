@@ -87,6 +87,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public int JpegQuality { get; set; } = 90;
 
     /// <summary>
+    /// Gets the primary country, the first in <see cref="Countries"/>.
+    /// </summary>
+    [XmlIgnore]
+    public string PrimaryCountry => Countries.FirstOrDefault() ?? "US";
+
+    /// <summary>
     /// Builds the render settings from this configuration.
     /// </summary>
     /// <returns>The render settings.</returns>
@@ -97,23 +103,41 @@ public class PluginConfiguration : BasePluginConfiguration
         Math.Clamp(JpegQuality, 1, 100));
 
     /// <summary>
+    /// Picks the providers whose badges are drawn for an item.
+    /// </summary>
+    /// <param name="state">The item's recorded state, if any.</param>
+    /// <returns>Provider ids in priority order, capped at <see cref="MaxBadges"/>.</returns>
+    public IReadOnlyList<int> BadgeProviderIds(ItemState? state)
+        => state?.ProviderIds.Take(Math.Max(0, MaxBadges)).ToList() ?? [];
+
+    /// <summary>
+    /// Returns a copy that is safe to show in an API response: the TMDB key is masked.
+    /// </summary>
+    /// <returns>The copy.</returns>
+    public PluginConfiguration Redacted()
+    {
+        var copy = (PluginConfiguration)MemberwiseClone();
+        copy.TmdbApiKey = string.IsNullOrEmpty(TmdbApiKey) ? string.Empty : "********";
+        return copy;
+    }
+
+    /// <summary>
     /// Gets a fingerprint of everything that changes how a poster looks, so cached renders go stale when it changes.
     /// </summary>
     /// <returns>A short hex string.</returns>
     public string RenderFingerprint()
     {
-        var text = string.Join(
-            '|',
-            Corner,
-            WidthPercent.ToString(CultureInfo.InvariantCulture),
-            AspectRatio.ToString(CultureInfo.InvariantCulture),
-            MarginPercent.ToString(CultureInfo.InvariantCulture),
-            SpacingPercent.ToString(CultureInfo.InvariantCulture),
-            BackdropColor,
-            CornerRadiusPercent.ToString(CultureInfo.InvariantCulture),
-            JpegQuality,
-            MaxBadges,
-            string.Join(',', SelectedProviderIds));
+        var text = JsonSerializer.Serialize(new { Settings = ToRenderSettings(), MaxBadges, SelectedProviderIds });
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
+    }
+
+    /// <summary>
+    /// Gets a fingerprint of the settings that decide what an item resolves to, so a change triggers a re-check.
+    /// </summary>
+    /// <returns>A short hex string.</returns>
+    public string ResolutionFingerprint()
+    {
+        var text = JsonSerializer.Serialize(new { Countries, SelectedProviderIds, TagsEnabled });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
     }
 }

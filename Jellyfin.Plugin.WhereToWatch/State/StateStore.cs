@@ -81,19 +81,38 @@ public sealed class StateStore
     /// Starts a run, or resumes the previous one if it never completed.
     /// </summary>
     /// <param name="force">Whether the run ignores the ttl and re-checks every item.</param>
+    /// <param name="fingerprint">Fingerprint of the settings that decide what an item resolves to; a change forces a full re-check.</param>
     /// <returns>The id of the active run.</returns>
-    public string StartRun(bool force)
+    public string StartRun(bool force, string fingerprint = "")
     {
         lock (_gate)
         {
+            var settingsChanged = _run is not null && _run.Fingerprint != fingerprint;
+            force |= settingsChanged;
+
             // An unforced leftover run must not swallow a forced request, or the ttl would still apply.
-            var resumable = _run is { Completed: false } && (_run.Force || !force);
+            var resumable = _run is { Completed: false } && !settingsChanged && (_run.Force || !force);
             if (!resumable)
             {
-                _run = new RunState(Guid.NewGuid().ToString("N"), force, false);
+                _run = new RunState(Guid.NewGuid().ToString("N"), force, false, fingerprint, 0);
             }
 
             return _run!.Id;
+        }
+    }
+
+    /// <summary>
+    /// Records how many items the active run will go through, for progress reporting.
+    /// </summary>
+    /// <param name="total">Number of items in the run.</param>
+    public void SetRunTotal(int total)
+    {
+        lock (_gate)
+        {
+            if (_run is not null)
+            {
+                _run = _run with { Total = total };
+            }
         }
     }
 
@@ -152,7 +171,21 @@ public sealed class StateStore
                 }
             }
 
-            return _clock.GetUtcNow() - state.LastChecked > ttl;
+            return state.Status == ItemStatus.Failed || _clock.GetUtcNow() - state.LastChecked > ttl;
+        }
+    }
+
+    /// <summary>
+    /// Makes every item due for a new check while keeping what was resolved, so badges keep working until the next scan.
+    /// </summary>
+    public void Expire()
+    {
+        lock (_gate)
+        {
+            foreach (var (id, state) in _items.ToList())
+            {
+                _items[id] = state with { LastChecked = DateTimeOffset.MinValue, RunId = null };
+            }
         }
     }
 
@@ -166,7 +199,8 @@ public sealed class StateStore
         {
             var byStatus = _items.Values.GroupBy(i => i.Status).ToDictionary(g => g.Key, g => g.Count());
             DateTimeOffset? lastChecked = _items.Count == 0 ? null : _items.Values.Max(i => i.LastChecked);
-            return new StateSummary(_items.Count, byStatus, _run?.Id, _run?.Completed ?? false, lastChecked);
+            var handled = _run is null ? 0 : _items.Values.Count(i => i.RunId == _run.Id);
+            return new StateSummary(_items.Count, byStatus, _run?.Id, _run?.Completed ?? false, lastChecked, handled, _run?.Total ?? 0);
         }
     }
 
@@ -183,7 +217,7 @@ public sealed class StateStore
         }
     }
 
-    private sealed record RunState(string Id, bool Force, bool Completed);
+    private sealed record RunState(string Id, bool Force, bool Completed, string Fingerprint = "", int Total = 0);
 
     private sealed record StateFile(RunState? Run, List<ItemState> Items);
 }
@@ -196,9 +230,13 @@ public sealed class StateStore
 /// <param name="RunId">Id of the latest run, if any.</param>
 /// <param name="RunCompleted">Whether the latest run finished.</param>
 /// <param name="LastChecked">When any item was last checked.</param>
+/// <param name="RunHandled">Items the latest run has handled so far.</param>
+/// <param name="RunTotal">Items the latest run will go through.</param>
 public sealed record StateSummary(
     int Total,
     IReadOnlyDictionary<ItemStatus, int> ByStatus,
     string? RunId,
     bool RunCompleted,
-    DateTimeOffset? LastChecked);
+    DateTimeOffset? LastChecked,
+    int RunHandled,
+    int RunTotal);

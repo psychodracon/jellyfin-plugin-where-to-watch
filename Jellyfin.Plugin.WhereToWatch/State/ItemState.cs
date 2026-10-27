@@ -13,6 +13,9 @@ public enum ItemStatus
 
     /// <summary>The item has no TMDB id and cannot be looked up.</summary>
     NoTmdbId,
+
+    /// <summary>TMDB does not know the title.</summary>
+    NotFound,
 }
 
 /// <summary>
