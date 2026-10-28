@@ -24,11 +24,13 @@ public sealed class TmdbClient : IDisposable
 {
     private const string ApiBase = "https://api.themoviedb.org/3";
     private const int MaxRetries = 4;
+    private const int MaxRedirects = 5;
     private const long MaxPageBytes = 3 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     // A plain HttpClient on purpose: IHttpClientFactory logs full request URLs, which would put the api_key in the log.
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    // Redirects are followed by hand (see GetWatchPageAsync) so every hop can be checked.
+    private readonly HttpClient _http;
     private readonly SemaphoreSlim _limiter = new(4);
     private readonly ILogger<TmdbClient> _logger;
 
@@ -37,8 +39,19 @@ public sealed class TmdbClient : IDisposable
     /// </summary>
     /// <param name="logger">Logger.</param>
     public TmdbClient(ILogger<TmdbClient> logger)
+        : this(logger, new HttpClientHandler { AllowAutoRedirect = false })
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TmdbClient"/> class with a custom message handler.
+    /// </summary>
+    /// <param name="logger">Logger.</param>
+    /// <param name="handler">The handler requests go through; it must not follow redirects itself.</param>
+    internal TmdbClient(ILogger<TmdbClient> logger, HttpMessageHandler handler)
     {
         _logger = logger;
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     /// <summary>
@@ -116,6 +129,11 @@ public sealed class TmdbClient : IDisposable
             _logger.LogWarning(ex, "Could not download TMDB logo {LogoPath}", logoPath);
             return null;
         }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Downloading TMDB logo {LogoPath} timed out", logoPath);
+            return null;
+        }
         finally
         {
             _limiter.Release();
@@ -128,12 +146,10 @@ public sealed class TmdbClient : IDisposable
     /// <param name="pageUrl">The watch page URL TMDB's API returned.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The page HTML, or null when the URL is not a TMDB page or the request failed.</returns>
-    public async Task<string?> GetWatchPageAsync(string pageUrl, CancellationToken cancellationToken)
+        public async Task<string?> GetWatchPageAsync(string pageUrl, CancellationToken cancellationToken)
     {
         // The URL comes from a response, so only ever fetch https pages on TMDB's own site.
-        if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri)
-            || uri.Scheme != Uri.UriSchemeHttps
-            || !(uri.Host.Equals("www.themoviedb.org", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("themoviedb.org", StringComparison.OrdinalIgnoreCase)))
+        if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri) || !IsTmdbPage(uri))
         {
             return null;
         }
@@ -141,16 +157,37 @@ public sealed class TmdbClient : IDisposable
         await _limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            request.Headers.UserAgent.ParseAdd("Jellyfin-WhereToWatch/1.0 (personal media server)");
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxPageBytes)
+            for (var hop = 0; hop <= MaxRedirects; hop++)
             {
-                _logger.LogInformation("TMDB watch page request returned {Status}", (int)response.StatusCode);
-                return null;
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                request.Headers.UserAgent.ParseAdd("Jellyfin-WhereToWatch/1.0 (personal media server)");
+                using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+                if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
+                {
+                    // TMDB redirects to the canonical slug URL; follow it, but only while it stays on TMDB.
+                    var location = response.Headers.Location;
+                    if (location is null || !Uri.TryCreate(uri, location, out var next) || !IsTmdbPage(next))
+                    {
+                        _logger.LogInformation("TMDB watch page redirected somewhere that is not allowed");
+                        return null;
+                    }
+
+                    uri = next;
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxPageBytes)
+                {
+                    _logger.LogInformation("TMDB watch page request returned {Status}", (int)response.StatusCode);
+                    return null;
+                }
+
+                return await ReadCappedAsync(response.Content, cancellationToken).ConfigureAwait(false);
             }
 
-            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("TMDB watch page redirected too many times");
+            return null;
         }
         catch (HttpRequestException ex)
         {
@@ -173,6 +210,31 @@ public sealed class TmdbClient : IDisposable
     {
         _http.Dispose();
         _limiter.Dispose();
+    }
+
+    private static bool IsTmdbPage(Uri uri)
+        => uri.Scheme == Uri.UriSchemeHttps
+            && (uri.Host.Equals("www.themoviedb.org", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("themoviedb.org", StringComparison.OrdinalIgnoreCase));
+
+    // Content-Length is absent on chunked responses, so the size limit has to be enforced while reading.
+    private async Task<string?> ReadCappedAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxPageBytes)
+            {
+                _logger.LogInformation("TMDB watch page is larger than {Limit} bytes and was ignored", MaxPageBytes);
+                return null;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return System.Text.Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 
     private static HttpRequestMessage BuildRequest(string apiKey, string path)

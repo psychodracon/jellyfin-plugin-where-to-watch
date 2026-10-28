@@ -32,8 +32,11 @@ public sealed record WatchOnResponse(string? Country, string? Link, IReadOnlyLis
 [Route("WhereToWatch")]
 public sealed class WatchOnController : ControllerBase
 {
+    private const string UserIdClaim = "Jellyfin-UserId";
+
     private readonly StateStore _state;
     private readonly ILibraryManager _libraryManager;
+    private readonly IUserManager _userManager;
     private readonly LogoStore _logos;
     private readonly DirectLinkService _directLinks;
 
@@ -42,12 +45,14 @@ public sealed class WatchOnController : ControllerBase
     /// </summary>
     /// <param name="state">State store.</param>
     /// <param name="libraryManager">Library manager.</param>
+    /// <param name="userManager">User manager.</param>
     /// <param name="logos">Logo store.</param>
     /// <param name="directLinks">Direct provider links, used only when enabled.</param>
-    public WatchOnController(StateStore state, ILibraryManager libraryManager, LogoStore logos, DirectLinkService directLinks)
+    public WatchOnController(StateStore state, ILibraryManager libraryManager, IUserManager userManager, LogoStore logos, DirectLinkService directLinks)
     {
         _state = state;
         _libraryManager = libraryManager;
+        _userManager = userManager;
         _logos = logos;
         _directLinks = directLinks;
     }
@@ -66,6 +71,14 @@ public sealed class WatchOnController : ControllerBase
         var state = _state.Get(itemId);
         var item = _libraryManager.GetItemById(itemId);
         if (!config.WatchOnEnabled || state is null || item is null || state.ProviderIds.Count == 0)
+        {
+            return empty;
+        }
+
+        // Authenticated is not enough: the item must also be one this user may see (library access, parental rating).
+        var userId = User.FindFirst(UserIdClaim)?.Value;
+        var user = Guid.TryParse(userId, out var id) ? _userManager.GetUserById(id) : null;
+        if (user is null || !item.IsVisible(user))
         {
             return empty;
         }

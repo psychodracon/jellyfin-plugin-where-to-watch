@@ -369,6 +369,87 @@ public sealed class StateStoreTests : IDisposable
         Assert.True(nothing.LinksDue(Start.AddMinutes(90), ttl, retry));
     }
 
+    [Fact]
+    public void A_failed_lookup_keeps_what_was_resolved_for_the_same_title()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 603, "PL", [8, 1899], ItemStatus.Resolved, null) { Link = "https://tmdb/page", ProviderNames = ["Netflix", "Max"] });
+
+        store.RecordFailure(id, 603, "timeout");
+
+        var state = store.Get(id)!;
+        Assert.Equal(ItemStatus.Failed, state.Status);
+        Assert.Equal("timeout", state.Error);
+        Assert.Equal([8, 1899], state.ProviderIds);
+        Assert.Equal("PL", state.Country);
+        Assert.Equal("https://tmdb/page", state.Link);
+        Assert.True(store.NeedsRefresh(id, TimeSpan.FromDays(7)));
+    }
+
+    [Fact]
+    public void A_failed_lookup_drops_old_results_when_the_tmdb_id_changed()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 603, "PL", [8], ItemStatus.Resolved, null));
+
+        store.RecordFailure(id, 604, "timeout");
+
+        var state = store.Get(id)!;
+        Assert.Equal(ItemStatus.Failed, state.Status);
+        Assert.Equal(604, state.TmdbId);
+        Assert.Empty(state.ProviderIds);
+    }
+
+    [Fact]
+    public void A_failed_lookup_of_an_unknown_item_is_recorded()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+
+        store.RecordFailure(id, 1, "HTTP 500");
+
+        Assert.Equal(ItemStatus.Failed, store.Get(id)!.Status);
+    }
+
+    [Fact]
+    public void Save_does_not_block_readers_and_round_trips_under_concurrent_use()
+    {
+        var store = new StateStore(StatePath, _clock);
+        var ids = Enumerable.Range(0, 200).Select(_ => Guid.NewGuid()).ToList();
+
+        Parallel.ForEach(ids, id =>
+        {
+            store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null));
+            store.Save();
+            _ = store.Get(id);
+        });
+        store.Save();
+
+        Assert.Equal(ids.Count, new StateStore(StatePath, _clock).Count);
+    }
+
+    [Fact]
+    public async Task Scheduled_saves_are_batched_into_a_write_later()
+    {
+        var id = Guid.NewGuid();
+        var store = new StateStore(StatePath, _clock);
+        store.Record(new ItemState(id, 1, "PL", [8], ItemStatus.Resolved, null));
+
+        store.ScheduleSave();
+        store.ScheduleSave();
+        Assert.False(File.Exists(StatePath));
+
+        for (var i = 0; i < 150 && !File.Exists(StatePath); i++)
+        {
+            await Task.Delay(100);
+        }
+
+        Assert.True(File.Exists(StatePath));
+        Assert.NotNull(new StateStore(StatePath, _clock).Get(id));
+    }
+
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

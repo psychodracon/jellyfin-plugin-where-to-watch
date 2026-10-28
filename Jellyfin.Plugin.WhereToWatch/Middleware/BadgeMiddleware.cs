@@ -138,9 +138,10 @@ public sealed partial class BadgeMiddleware
 
     private static bool IsWebIndex(HttpRequest request)
     {
+        // This middleware runs before Jellyfin applies its base URL, so the path may still start with it (for example /jellyfin/web/).
         var path = request.Path.Value ?? string.Empty;
         return HttpMethods.IsGet(request.Method)
-            && (path.Equals("/web/", StringComparison.OrdinalIgnoreCase) || path.Equals("/web/index.html", StringComparison.OrdinalIgnoreCase));
+            && (path.EndsWith("/web/", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/web/index.html", StringComparison.OrdinalIgnoreCase));
     }
 
     // Inlined into the page rather than served from a URL: a separate .js request can be blocked by a reverse proxy in front of Jellyfin.
@@ -303,8 +304,8 @@ public sealed partial class BadgeMiddleware
 
         var key = RenderCache.Key(
             itemId.ToString("N"),
-            context.Request.QueryString.Value ?? string.Empty,
-            context.Request.Headers.Accept.ToString(),
+            RenderCache.NormalizeQuery(context.Request.QueryString.Value ?? string.Empty),
+            RenderCache.NormalizeAccept(context.Request.Headers.Accept.ToString()),
             CardAspect.ToString("F4", CultureInfo.InvariantCulture),
             item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture),
             config.RenderFingerprint(),

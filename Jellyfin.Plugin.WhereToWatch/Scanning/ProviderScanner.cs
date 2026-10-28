@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.WhereToWatch.Configuration;
 using Jellyfin.Plugin.WhereToWatch.Links;
@@ -22,7 +23,6 @@ namespace Jellyfin.Plugin.WhereToWatch.Scanning;
 public sealed class ProviderScanner
 {
     private const int CheckpointItems = 200;
-    private const long MaxCacheBytes = 512L * 1024 * 1024;
     private static readonly TimeSpan DirectLinkPause = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromSeconds(30);
 
@@ -132,7 +132,7 @@ public sealed class ProviderScanner
             finally
             {
                 _state.Save();
-                _cache.Prune(MaxCacheBytes);
+                _cache.Prune(RenderCache.MaxBytes);
             }
         }
         finally
@@ -149,7 +149,7 @@ public sealed class ProviderScanner
             var providers = await _tmdb.GetProvidersAsync(config.TmdbApiKey, country, cancellationToken).ConfigureAwait(false);
             await _logos.EnsureCachedAsync(providers.Where(p => config.SelectedProviderIds.Contains(p.Id)), cancellationToken).ConfigureAwait(false);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             _logger.LogWarning(ex, "Where to Watch: could not refresh provider logos");
         }
@@ -202,14 +202,15 @@ public sealed class ProviderScanner
                 await ApplyTagsAsync(item, resolution.Providers.Select(p => p.Name).ToList(), cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException)
+        // An HttpClient timeout is also an OperationCanceledException; only a cancelled scan should stop the run.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Where to Watch: lookup failed for {Name}", item.Name);
-            _state.Record(new ItemState(item.Id, tmdbId, null, [], ItemStatus.Failed, ex.Message));
+            _state.RecordFailure(item.Id, tmdbId, ex.Message);
         }
     }
 

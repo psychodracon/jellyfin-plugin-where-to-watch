@@ -15,11 +15,15 @@ public sealed class StateStore
         Converters = { new JsonStringEnumConverter() },
     };
 
+    private static readonly TimeSpan SaveDelay = TimeSpan.FromSeconds(10);
+
     private readonly string _path;
     private readonly TimeProvider _clock;
     private readonly object _gate = new();
+    private readonly object _saveGate = new();
     private readonly Dictionary<Guid, ItemState> _items = [];
     private RunState? _run;
+    private Timer? _saveTimer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StateStore"/> class and loads existing state.
@@ -150,6 +154,24 @@ public sealed class StateStore
     }
 
     /// <summary>
+    /// Records a failed lookup. What was resolved earlier for the same title is kept, so a TMDB outage does not take the badges away;
+    /// the item is marked failed so the next scan retries it.
+    /// </summary>
+    /// <param name="itemId">Jellyfin item id.</param>
+    /// <param name="tmdbId">The TMDB id that was looked up.</param>
+    /// <param name="error">What went wrong.</param>
+    public void RecordFailure(Guid itemId, int? tmdbId, string error)
+    {
+        lock (_gate)
+        {
+            var failed = _items.TryGetValue(itemId, out var previous) && previous.TmdbId == tmdbId && previous.ProviderIds.Count > 0
+                ? previous with { Status = ItemStatus.Failed, Error = error }
+                : new ItemState(itemId, tmdbId, null, [], ItemStatus.Failed, error);
+            _items[itemId] = failed with { LastChecked = _clock.GetUtcNow(), RunId = _run?.Id };
+        }
+    }
+
+    /// <summary>
     /// Stores the stream links fetched for an item.
     /// </summary>
     /// <param name="itemId">Jellyfin item id.</param>
@@ -232,11 +254,50 @@ public sealed class StateStore
     /// </summary>
     public void Save()
     {
+        // Snapshot under the state lock, but serialise and write outside it so readers are not blocked by disk I/O.
+        StateFile snapshot;
         lock (_gate)
         {
+            snapshot = new StateFile(_run, _items.Values.ToList());
+        }
+
+        lock (_saveGate)
+        {
             var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(new StateFile(_run, _items.Values.ToList()), JsonOptions));
+            File.WriteAllText(temp, JsonSerializer.Serialize(snapshot, JsonOptions));
             File.Move(temp, _path, overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// Asks for the state to be written soon. Many calls close together share one write.
+    /// </summary>
+    public void ScheduleSave()
+    {
+        lock (_gate)
+        {
+            _saveTimer ??= new Timer(_ => SaveScheduled(), null, SaveDelay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void SaveScheduled()
+    {
+        lock (_gate)
+        {
+            _saveTimer?.Dispose();
+            _saveTimer = null;
+        }
+
+        try
+        {
+            Save();
+        }
+        catch (IOException)
+        {
+            // The next scheduled or checkpoint save will try again.
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 

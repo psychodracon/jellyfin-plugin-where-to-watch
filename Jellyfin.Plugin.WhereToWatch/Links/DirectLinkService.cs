@@ -67,7 +67,9 @@ public sealed class DirectLinkService
             var html = await _tmdb.GetWatchPageAsync(state.Link, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<StreamLink> links = html is null ? [] : WatchPageParser.StreamLinks(html);
             _state.RecordStreamLinks(itemId, links);
-            _state.Save();
+
+            // Written in batches (the scan also checkpoints): rewriting the whole state file per page would be wasteful.
+            _state.ScheduleSave();
 
             if (pause > TimeSpan.Zero)
             {
