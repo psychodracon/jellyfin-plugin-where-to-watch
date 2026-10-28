@@ -183,17 +183,6 @@ dotnet publish Jellyfin.Plugin.WhereToWatch -c Release -o artifacts/publish
 
 The result is `artifacts/publish/Jellyfin.Plugin.WhereToWatch.dll`. Jellyfin and SkiaSharp are supplied by the server and are not bundled.
 
-### Releasing
-
-Pushing a version tag publishes a release:
-
-```
-git tag 1.0.1.0
-git push origin 1.0.1.0
-```
-
-The [release workflow](.github/workflows/release.yml) runs the tests, builds the plugin with the tag as its version, uploads `where-to-watch_<version>.zip` to a GitHub release, and adds the version (with its MD5 checksum) to [manifest.json](manifest.json) on `main`. Tags may be `1.0.1.0`, `1.0.1` (becomes `1.0.1.0`) or either with a leading `v`. The [CI workflow](.github/workflows/ci.yml) builds and tests every push and pull request.
-
 The unit tests cover the logic that does not need a running server: country fallback, tag changes, badge layout and rendering, the state file, the HTML injection and the TMDB page parser. The poster badges have been checked on a running Jellyfin 12. The "Watch on" row and the direct links are tested at the logic level only and still need checking against your own server.
 
 ## Credits and license
