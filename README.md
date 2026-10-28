@@ -12,7 +12,17 @@ Your stored posters are never modified. Badges are drawn as posters are served, 
 
 ## Install
 
-1. Build the plugin (see [Build](#build)) or take `Jellyfin.Plugin.WhereToWatch.dll` from a build.
+### From the plugin repository (recommended)
+
+1. In Jellyfin go to **Dashboard → Plugins → Repositories → Add**.
+2. Name it `Where to Watch` and use this URL:
+   `https://raw.githubusercontent.com/psychodracon/jellyfin-plugin-where-to-watch/main/manifest.json`
+3. Open **Catalog**, find **Where to Watch** and install the latest version.
+4. **Restart Jellyfin.** Plugins are only loaded at startup.
+
+### Manually
+
+1. Build the plugin (see [Build](#build)) or take `Jellyfin.Plugin.WhereToWatch.dll` from a release.
 2. Put the DLL in `<jellyfin-data>/plugins/Where to Watch_<version>/` (for example `Where to Watch_1.0.0.0`).
 3. **Delete any older `Where to Watch_*` folder.** If two exist, Jellyfin loads the highest version.
 4. **Restart Jellyfin.** Plugins are only loaded at startup.
@@ -172,6 +182,17 @@ dotnet publish Jellyfin.Plugin.WhereToWatch -c Release -o artifacts/publish
 ```
 
 The result is `artifacts/publish/Jellyfin.Plugin.WhereToWatch.dll`. Jellyfin and SkiaSharp are supplied by the server and are not bundled.
+
+### Releasing
+
+Pushing a version tag publishes a release:
+
+```
+git tag 1.0.1.0
+git push origin 1.0.1.0
+```
+
+The [release workflow](.github/workflows/release.yml) runs the tests, builds the plugin with the tag as its version, uploads `where-to-watch_<version>.zip` to a GitHub release, and adds the version (with its MD5 checksum) to [manifest.json](manifest.json) on `main`. Tags may be `1.0.1.0`, `1.0.1` (becomes `1.0.1.0`) or either with a leading `v`. The [CI workflow](.github/workflows/ci.yml) builds and tests every push and pull request.
 
 The unit tests cover the logic that does not need a running server: country fallback, tag changes, badge layout and rendering, the state file, the HTML injection and the TMDB page parser. The poster badges have been checked on a running Jellyfin 12. The "Watch on" row and the direct links are tested at the logic level only and still need checking against your own server.
 

@@ -1,0 +1,12 @@
+[
+    {
+        "guid": "3b675640-68ab-443a-adf8-55560d06ea1b",
+        "name": "Where to Watch",
+        "description": "Resolves flatrate streaming providers for Movies and Series from TMDB, adds stream:<provider> tags, and draws provider badges on Primary posters on the fly without modifying stored images.",
+        "overview": "Tags items with their streaming providers and draws provider badges on posters.",
+        "owner": "psychodracon",
+        "category": "General",
+        "imageUrl": "https://raw.githubusercontent.com/psychodracon/jellyfin-plugin-where-to-watch/main/images/logo.png",
+        "versions": []
+    }
+]
