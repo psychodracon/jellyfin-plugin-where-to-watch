@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - .github/**
+      - '**.md'
+      - renovate.json
+      - LICENSE
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: Version part to bump
+        type: choice
+        options: [revision, patch, minor, major]
+        default: revision
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: ci-${{ github.repository }}-${{ github.ref }}
+    steps:
+      - name: Setup / Publish check
+        id: ci
+        uses: psychodracon/github-workflows/.github/actions/publish-check@v1
+
+      - name: Setup / Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ci.outputs.ref }}
+
+      # Jellyfin versions have four parts: major.minor.patch.revision.
+      - name: Setup / Version
+        id: version
+        if: steps.ci.outputs.publish == 'true'
+        uses: psychodracon/github-workflows/.github/actions/version@v1
+        with:
+          type: msbuild
+          paths: Directory.Build.props
+          bump: ${{ inputs.version_bump || 'revision' }}
+
+      - name: Build / .NET
+        uses: psychodracon/github-workflows/.github/actions/dotnet-ci@v1
+
+      - name: Release / Package
+        id: package
+        if: steps.ci.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          zip="dist/where-to-watch_${VERSION}.zip"
+          dotnet publish Jellyfin.Plugin.WhereToWatch -c Release -o publish
+          mkdir -p dist
+          zip -j "$zip" publish/Jellyfin.Plugin.WhereToWatch.dll
+          VERSION="$VERSION" TAG="v${VERSION}" REPO="$GITHUB_REPOSITORY" ZIP="$zip" node scripts/update-manifest.js
+          echo "zip=${zip}" >> "$GITHUB_OUTPUT"
+
+      - name: Repo / Commit and tag version
+        if: steps.ci.outputs.publish == 'true'
+        uses: psychodracon/github-workflows/.github/actions/git-release@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          files: ${{ steps.version.outputs.files }} manifest.json
+
+      - name: Release / GitHub release
+        if: steps.ci.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${VERSION}" "$ZIP" --title "Where to Watch ${VERSION}" --generate-notes --verify-tag
+
+      - name: Notify
+        if: failure()
+        uses: psychodracon/github-workflows/.github/actions/notify@v1
+        with:
+          status: ${{ job.status }}
+          version: ${{ steps.version.outputs.version }}
+          token: ${{ secrets.PUSHOVER_API_TOKEN }}
+          user: ${{ secrets.PUSHOVER_USER_KEY }}
+          devices: ${{ secrets.PUSHOVER_DEVICES }}

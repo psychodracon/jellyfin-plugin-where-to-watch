@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="600" viewBox="0 0 780 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23252f"/>
+      <stop offset="1" stop-color="#0c0d12"/>
+    </linearGradient>
+    <linearGradient id="jf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#aa5cc3"/>
+      <stop offset="1" stop-color="#00a4dc"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="780" height="600" fill="url(#bg)"/>
+
+  <!-- Icon: a movie poster with two provider badges stacked up from its bottom-left corner, like the plugin draws them -->
+  <g transform="translate(390 85) scale(1.2) translate(-390 -100)">
+  <rect x="328" y="112" width="124" height="186" rx="14" fill="#000000" opacity="0.35"/>
+  <rect x="328" y="100" width="124" height="186" rx="14" fill="url(#jf)"/>
+  <g fill="#10121b" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2">
+    <rect x="337" y="245" width="32" height="32" rx="8"/>
+    <rect x="337" y="207" width="32" height="32" rx="8"/>
+  </g>
+  <circle cx="353" cy="261" r="9" fill="#ff5c5c"/>
+  <circle cx="353" cy="223" r="9" fill="#ffb020"/>
+  </g>
+
+  <!-- Wordmark: two text elements at measured positions, because renderers disagree on centring a styled tspan -->
+  <g font-family="Liberation Sans, Arial, Helvetica, sans-serif" font-weight="700" font-size="84">
+    <text x="74" y="440" fill="#ffffff">Where to</text>
+    <text x="457" y="440" fill="#00a4dc">Watch</text>
+  </g>
+</svg>
