@@ -189,4 +189,4 @@ The unit tests cover the logic that does not need a running server: country fall
 
 Streaming availability data is provided by **TMDB**, powered by **JustWatch**. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-GPL-3.0. See `LICENSE`.
+Copyright (C) Kamil Ganczarek. Licensed under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE).
