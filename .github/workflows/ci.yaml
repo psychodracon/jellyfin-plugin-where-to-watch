@@ -76,13 +76,3 @@ jobs:
           ZIP: ${{ steps.package.outputs.zip }}
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v${VERSION}" "$ZIP" --title "Where to Watch ${VERSION}" --generate-notes --verify-tag
-
-      - name: Notify
-        if: failure()
-        uses: psychodracon/github-workflows/.github/actions/notify@v1
-        with:
-          status: ${{ job.status }}
-          version: ${{ steps.version.outputs.version }}
-          token: ${{ secrets.PUSHOVER_API_TOKEN }}
-          user: ${{ secrets.PUSHOVER_USER_KEY }}
-          devices: ${{ secrets.PUSHOVER_DEVICES }}
