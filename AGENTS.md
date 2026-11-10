@@ -1,14 +1,31 @@
 # jellyfin-plugin-where-to-watch
 
-Jellyfin plugin that tags items and draws poster badges with their streaming services. Installation,
-settings and behaviour are in [README.md](README.md), which is written for users.
+Jellyfin plugin that tags movies and series with their streaming services (from TMDB) and draws service
+badges on posters. Installation, settings and behaviour are in [README.md](README.md), which is written
+for users.
 
-- `dotnet build WhereToWatch.slnx` and `dotnet test WhereToWatch.slnx`. The plugin is in
-  `Jellyfin.Plugin.WhereToWatch/` (scanning in `Scanning/`, TMDB access in `Tmdb/`, poster rendering in
-  `Rendering/`, the details-page row in `Web/`), the tests in `Jellyfin.Plugin.WhereToWatch.Tests/`.
-- The version has four parts and lives in `Directory.Build.props`; CI bumps the last part by default. CI also
-  adds the release to `manifest.json` (`scripts/update-manifest.js`, run on the Node version in `.nvmrc`), so
-  do not edit `versions` by hand.
-- Keep the README in step with user-visible changes, including the settings table.
-- The plugin catalog URL points at `manifest.json` on `main`, so the repository must be public for others to
-  install it.
+## Commands
+
+```sh
+dotnet build WhereToWatch.slnx
+dotnet test WhereToWatch.slnx
+```
+
+## Conventions
+
+- Assemblies the Jellyfin server ships (`Jellyfin.*`, SkiaSharp) are referenced compile-only
+  (`ExcludeAssets="runtime"` or `IncludeAssets="compile"`) so the plugin loads the host's copy; add any
+  new host-supplied reference the same way.
+
+## Git and releases
+
+- The version has four parts, in `Directory.Build.props`. CI bumps it and adds each release to
+  `manifest.json`; edit neither by hand.
+- The catalogue URL points at `manifest.json` on `main`, so the repository must stay public.
+
+## Boundaries
+
+- **Always:** keep the README settings table in step with configuration changes.
+- **Ask first:** raising the Jellyfin package versions or `targetAbi` (drops older servers); changing tag
+  names (existing libraries carry them).
+- **Never:** write to stored poster images; badges are drawn on the fly.
