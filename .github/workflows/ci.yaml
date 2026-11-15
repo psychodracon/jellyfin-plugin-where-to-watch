@@ -14,6 +14,8 @@ on:
       - '**.md'
       - renovate.json
       - LICENSE
+      - .nvmrc
+      - Jellyfin.Plugin.WhereToWatch.Tests/**
   workflow_dispatch:
     inputs:
       version_bump:
