@@ -224,7 +224,7 @@ its URLs, because some proxies block or reroute those.
 
 ## Development
 
-Requires the **.NET 10 SDK**.
+Requires the **.NET 10 SDK**; `global.json` pins the version CI builds releases with.
 
 ```sh
 dotnet build WhereToWatch.slnx
